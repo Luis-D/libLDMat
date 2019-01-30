@@ -52,6 +52,7 @@ The fast, low level and non-bloated (*maybe*) math library.
 * On **DS**: *LERP*.
 * On **V2**: *ADD, SUB, MUL, DIV, DOT, LERP, NORM, DISTANCE, CROSS, ANGLE*.
    * By **SS**: *MUL, DIV*.
+   * Special operations: **V2V2ANGLE** (Angle between two 2D points.)
 * On **V3**: *ADD, SUB, MUL, DIV, DOT, LERP, NORM, DISTANCE, CROSS*.
    * By **SS**: *MUL, DIV*.
 * On **V4**: *ADD, SUB, MUL, DIV, DOT, LERP, NORM, DISTANCE*.
