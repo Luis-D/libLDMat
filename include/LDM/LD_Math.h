@@ -49,6 +49,9 @@ extern "C"
     typedef struct EULER{struct V3 axis; float angle;}EULER;
     /******************/
 
+    float SSLERP(float A, float B,float Factor);
+    double DSLERP(double A, double B,double Factor);
+
     VArith(V4);
     SArith(V4);
 
