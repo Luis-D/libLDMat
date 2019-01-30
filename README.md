@@ -76,17 +76,17 @@ The fast, low level and non-bloated (*maybe*) math library.
 #### Usage:
 Most binary operations uses this format: 
 ```C
-void OPERATION(void * Destiny, void * SourceOperand1, void * SourceOperand2).
+void OPERATION(void * Destiny, void * SourceOperand1, void * SourceOperand2);
 ```
 Most unary operations uses this format:
 ```C
-void OPERATION(void * Destiny, void * Source).
+void OPERATION(void * Destiny, void * Source);
 ```
 Scalar parameters are passed as value.
 Most scalar only operations uses this format:
 ```C
-float OPERATION(float Source).
-double OPERATION(fdouble Source).
+float OPERATION(float Source);
+double OPERATION(fdouble Source);
 ```
 
 ##### C/C++:
