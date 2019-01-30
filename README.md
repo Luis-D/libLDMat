@@ -89,6 +89,8 @@ Most scalar only operations uses this format:
 float OPERATION(float Source);
 double OPERATION(fdouble Source);
 ```
+For more complex operations refer to the respective definition files.
+
 
 ##### C/C++:
 ###### Example:
