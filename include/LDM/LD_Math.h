@@ -103,6 +103,9 @@ extern "C"
     void M4MULV3(void * V3_Destiny, void * Matrix, void * Vector);
     void AM4MULV3(void * V3_Destiny, void * Matrix, void * Vector); 
 
+    void M4PERSPECTIVE(void *matrix, float fovyInDegrees, float aspectRatio,float znear, float zfar);
+    void M4ORTHO(void *matrix, float Width, float Height, float znear, float zfar);
+    void M4LOOKAT(void * matrix, void * Vec3From_EYE, void * Vec3To_CENTER, void * Vec3Up);
 #ifdef __cplusplus
 }
 #endif

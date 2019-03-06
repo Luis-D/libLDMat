@@ -5,6 +5,24 @@
 ;*****************************
 ;MACROS
 ;*****************************
+
+;%define _FRAMESTACKPOINTER_
+
+%macro _enter_ 0
+%ifdef _FRAMESTACKPOINTER_ 
+    push rbp
+    mov rbp, rsp
+%endif 
+%endmacro
+
+%macro _leave_ 0
+%ifdef _FRAMESTACKPOINTER_ 
+    mov rsp, rbp
+    pop rbp
+%endif
+%endmacro
+
+
 %macro args_reset 0
     %ifidn __OUTPUT_FORMAT__, elf64 
         %define arg1 RDI
@@ -18,8 +36,8 @@
         %define arg2 RDX
         %define arg3 R8
         %define arg4 R9
-        %define arg5 [rbp+48]
-        %define arg6 [rbp+48+8]
+        %define arg5 [rbp+(8*5)]
+        %define arg6 [rbp+(8*5)+8]
     %endif
     %define arg1f XMM0
     %define arg2f XMM1
@@ -48,7 +66,9 @@ args_reset ;<--Sets arguments definitions to normal, as it's definitions can cha
 ;%1 Desinty XMM Operand (float)
     pcmpeqw %1,%1
     pslld %1,31
-    pcmpeqw %1,%1
+    
 %endmacro
+
+
 
 %endif

@@ -6,7 +6,17 @@
 
 args_reset ;<--Sets arguments definitions to normal, as it's definitions can change.
 
-/********MACROS***********/
+; SEGMODE: 
+; 4 bits flag:
+;   bit 0 set the notation mode (A->B) or (A+B)
+;   bit 1 and 2 set the line mode (infinite line, ray or line segment)
+;   bit 3 is a placeholder for now.
+
+;/********MACROS***********/
+
+
+
+
 %macro CROSSPRODUCTV2 4
 ;%1 and %2 Registers to operate with
 ;%3 Register where to store the result
@@ -28,25 +38,342 @@ subss %3,%4
 	movshdup %4,%3
 	addss    %3,%4
 %endmacro
-/*************************/
+;/*************************/
 
 
 section .text
 
-global TRI2DCENTROID; void TRI2DCENTROID(void * Destiny, void * Source);
+global V2VSAABB2; char V2VSAABB2 (void * Point2D, void * AABB2, char AABB2MODE);
+;****************************************************************
+;Given a 2D point and a AABB2,
+;this algoritm returns if the 2D point lies in the AABB2.
+;AABB2MODE:
+;     *2 bits flag:
+;     *bit 0 set the notation mode (Center+Half_extent) or (A->B)
+;     *bit 1 set the subnotation mode:
+;        if (A->B) (bit 0 set): (Pivot+Direction) or (Min->Max) 
+;****************************************************************
+V2VSAABB2:
+    _enter_
+    movsd xmm0,[arg1]; <-- Point2D
+        xor arg4,arg4; set to 0 
+    movups xmm1,[arg2]; 
+        xor rax,rax; clear return
+        not arg4; set arg4 to -INF (full set) for later comparition 
+    movhlps xmm2,xmm1;
+
+    ;xmm0: [][][Py][Px]
+    ;xmm1: [][][Ay][Ax]
+    ;xmm2: [][][By][Bx]
+
+    BT arg3, 0 ;check if Center+Half_Extents or Classic AABB2
+    jc V2VSAABB2ISCLASSIC
+        ;if bit 0 is clear, then it's Center+Half_Extent
+        movaps xmm3,xmm1
+        subps xmm1,xmm2
+        addps xmm2,xmm3
+    V2VSAABB2ISCLASSIC:
+        ;if bit 0 is set, then:
+        BT arg3,1; check if Pivot+Direction or Min->Max
+        jc V2VSAABB2PREPROCCESSEND
+            ;if bit 1 is clear, then it's Pivot+Direction
+            addps xmm2,xmm1
+
+    V2VSAABB2PREPROCCESSEND:
+
+    ;xmm0: [][][Py][Px]
+    ;xmm1: [][][Min.y][Min.x]
+    ;xmm2: [][][Max.y][Max.x]
+
+    ;check if xmm1 <= xmm0
+    cmpps xmm1,xmm0,2
+
+    ;check if xmm0 <= xmm2
+    cmpps xmm0,xmm2,2
+
+    movq arg1,xmm1
+    movq arg2,xmm0
+
+    cmp arg1,arg4
+    jne V2VSAABB2END
+    cmp arg2,arg4
+    jne V2VSAABB2END
+    mov ax,1
+    V2VSAABB2END:
+    _leave_
+    ret
+
+global V2V2VSAABB2; char V2V2VSAABB2(void * Line2D, void * AABB2, char SEGAABB2RETMODE, float * Times_Return); 
+;*********************************************************************
+;Given a 2D line and a 2D AABB,
+;This algorithm returns if the line collided with the AABB.
+;This algorithm returns when the collision(s) occurs.
+;
+;SEGAABB2RETMODE:
+; 8 bits flag:
+;   bit 0 set the line notation mode (A+B)(clear) or (A->B)(set)
+;   bit 1 and 2 set the line mode (infinite line, ray or line segment)
+;   bit 3 check collision with only the edges or with also the volume.
+;   bit 4 set the AABB notation mode (Center+Half_extent) or (A->B)
+;   bit 5 set the subnotation mode:
+;        if (A->B) (bit 0 set): (Pivot+Direction) or (Min->Max) 
+;   bits 6 and 7 set the return data:
+;     0 = none contact
+;     1 = First contact
+;     2 = Last contact
+;     3 = Both contact 
+;Original source from: 
+;https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-box-intersection
+;*********************************************************************
+V2V2VSAABB2:
+    _enter_
+        mov rax,arg3; <- Temporal variable
+    movups xmm0,[arg1]
+    pxor xmm4,xmm4
+        shr rax,1;
+        and rax,3;
+        ;rax = Line mode bits
+    movhlps xmm1,xmm0
+    ;xmm0 = [][][LAy][LAx]
+    ;xmm1 = [][][LBy][LBx]
+
+    movups xmm2,[arg2]
+    pxor xmm5,xmm5
+    
+    BT arg3,0 ; check if line is (A->B) or (A+B)
+    jnc V2V2VSAABB2SKIPLINESUM
+        addps xmm1,xmm0
+    V2V2VSAABB2SKIPLINESUM:
+
+    movhlps xmm3,xmm2
+
+    ;xmm2 = [][][BoxAy][BoxAx]
+    ;xmm3 = [][][BoxBy][BoxBx]
+
+    BT arg3,4 ; check if AABB is (Center+Extents) or (A->B)
+    jc V2V2V2AABBISTYPEB
+    ;If AABB is (Center+Extents), then:
+        movaps xmm4,xmm2
+        subps xmm2,xmm3
+        addps xmm3,xmm4
+    jmp V2V2AABBSKIPISTYPEB
+    V2V2V2AABBISTYPEB:
+        BT arg3,5; check if (Pivot+Direction) or (Min->Max)
+        jc V2V2AABBSKIPISTYPEB
+        ;if (Pivot+Direction), then:
+        addps xmm3,xmm2
+    V2V2AABBSKIPISTYPEB:
+
+    ;xmm0 = [][][LAy][LAx]
+    ;xmm1 = [][][LBy][LBx]
+    ;xmm2 = [][][MinY][MinX]
+    ;xmm3 = [][][MaxY][MaxX]
+    ;xmm4 = 0
+    ;xmm5 = 0
+
+    xor arg1,arg1 ; arg1 will be used to record volume collision
+    bt arg3,3 ;check if collide with the volume is set
+    jnc V2V2VSAABB2SKIPCHECKINSIDE
+        movsd xmm4,xmm0
+        movsd xmm5,xmm2
+        ;xmm4: [][][Py][Px]
+        ;xmm5: [][][Min.y][Min.x]
+        ;xmm3: [][][Max.y][Max.x]
+
+        ;check if xmm5 <= xmm4
+        cmpps xmm5,xmm0,2
+
+        ;check if xmm4 <= xmm3
+        cmpps xmm4,xmm2,2
+
+        pand xmm4,xmm5
+
+        pcmpeqd xmm5, xmm5 
+        pxor xmm4,xmm5
+
+        ptest xmm4,xmm4 ;if zero, then the point is inside the AABB
+        jnz V2V2VSAABB2SKIPCHECKINSIDE
+        mov arg1,1
+
+
+    V2V2VSAABB2SKIPCHECKINSIDE:
+
+    ;Calculate FirstCol = (Min - LA) / LB
+    subps xmm2,xmm0
+    divps xmm2,xmm1
+
+    shr arg3,6
+
+    ;Calculate LastCol = (Max - LA) / LB
+    subps xmm3,xmm0
+    divps xmm3,xmm1
+
+    
+
+    movshdup xmm4,xmm2
+    movshdup xmm5,xmm3
+    
+    ;xmm2= [][][][FCx]
+    ;xmm4= [][][][FCy]
+    ;xmm3= [][][][LCx]
+    ;xmm5= [][][][LCy]
+
+
+    movaps xmm1,xmm3
+    ;xmm1 = [][][LCy][LCx]
+
+
+    ; Do: if (LCy <= FCx || LCx <= FCy) then "Does not collide"
+    cmpps xmm5,xmm2,2 ;LCy <= FCx
+    cmpps xmm1,xmm4,2 ;LCx <= FCy
+    por xmm1,xmm5     ;(LCy <= FCx || LCx <= FCy)
+    ptest xmm1,xmm1 ;if(LCy <= FCx || LCx <= FCy)
+    jnz V2V2AABBSKIPCHECKIFINSIDE
+        bt arg1,0 ;check if a collision with the inside has been done
+        jc V2V2AABBENDONE ;jump if collided
+    V2V2AABBSKIPCHECKIFINSIDE:
+
+    ;rax = Line Mode
+    ;arg3 = Return Mode
+
+    ;Check time return Mode
+    cmp arg3,0 ;if no time returns
+    je V2V2AABBSKIPSTORE ;return no time
+
+    bt arg3,2 ;check if return last collision is enabled
+    jnc V2V2AABBNOLAST
+        movss xmm0,xmm3
+        ucomiss xmm5,xmm3 ;check if LCy <= LCx
+        ja V2V2AABBNOLAST
+            movss xmm0,xmm5
+
+    V2V2AABBNOLAST:
+
+    bt arg3,1 ;check if return first collision is enabled
+    jnc V2V2AABBNOFIRST
+        psllq xmm0,4 ;shift the float to make space for the new result
+        movss xmm0,xmm2 
+        ucomiss xmm4,xmm2 
+        ja V2V2AABBNOFIRST
+            movss xmm0,xmm4
+
+    V2V2AABBNOFIRST:
+
+    ;xmm0 [][][LCT][FCT]
+
+    pxor xmm2,xmm2
+
+    cmp arg3,3
+    je V2V2AABBSTOREBOTH
+        movsd [arg4],xmm0 ;Store the two results
+        jmp V2V2AABBSKIPSTORE
+    V2V2AABBSTOREBOTH:
+        movss [arg4],xmm0 ;Store one retult
+
+    V2V2AABBSKIPSTORE:
+
+    ;Load 1.0
+    pcmpeqw xmm3,xmm3
+    pslld xmm3,25
+    psrld xmm3,2
+    ;-----------
+
+    ;xmm2 = 0
+    ;xmm3 = 1.0
+
+    ;check times according with line type
+
+    test arg3,arg3; if infinite (arg3==0), then skip checking boundaries
+    jz V2V2AABBENDONE
+
+    ;check if 0<= first (or only) time
+    ucomiss xmm0,xmm2
+    ja V2V2AABBENDZERO; if 0 is above times (only first time), then return 0
+
+
+    cmp arg3,2; check if line is a line segment
+    jne V2V2AABBENDZERO
+
+    ;check if first (or only) time is <=1
+
+    ucomiss xmm2,xmm3
+    ja V2V2AABBENDZERO; if the time is above 1, then return 0
+    
+    V2V2AABBENDONE:
+    mov rax,1
+    jmp V2V2AABBEND
+    V2V2AABBENDZERO:
+    xor rax,rax
+    V2V2AABBEND:
+
+    _leave_
+    ret
+
+global V2VSV2RADIUS; char V2VSV2RADIUS(void * Point2D, void * CircleCenter, float Radius)
+;****************************************************************
+;Given a 2D point and a Circunference by a center and a Radius,
+;This algorithm returns if the point lies in the circle.
+;****************************************************************
+V2VSV2RADIUS:
+%ifidn __OUTPUT_FORMAT__, win64 
+   %define arg1f xmm2
+%endif
+    _enter_
+    movsd xmm5,[arg1]
+    
+    mov rax,1
+
+    movsd xmm4,[arg2]
+
+    xor arg4,arg4
+
+    subps xmm4,xmm5
+
+    ;Norm
+    mulps xmm4,xmm4
+    movshdup xmm1,xmm4
+    addss   xmm1,xmm4
+    sqrtss xmm1,xmm1
+    ;------------;
+
+    ucomiss arg1f,xmm1
+    cmovb rax,arg4
+    
+    _leave_
+    ret
+%ifidn __OUTPUT_FORMAT__, win64 
+    args_reset
+%endif
+
+global V2VSV2; char V2VSV2(void * A,void *B)
+;******************************************************
+;Given two 2D points,
+;This algorithm returns if both lies in the same place
+;*******************************************************
+V2VSV2:
+    _enter_
+    mov arg3,[arg1]
+    mov arg4,0
+    mov rax,1
+    cmp arg3,[arg2]
+    cmovne rax,arg4
+    _leave_
+    ret
+
+global TRI2CENTROID; void TRI2CENTROID(void * Destiny, void * Source);
 ;************************
 ;Given a triangle Triangle described by and array of 3 2D points (2 floats per point)
 ;this algorithm calculates its barycenter and returns and array of a 2D point in Result
 ;************************
-TRI2DCENTROID:
-    ;enter 0,0    
+TRI2CENTROID:
+    _enter_    
     movsd XMM0,[arg2]
     add arg2,(4*2) ;<- It jumps two times the size of a float (4 bytes)
     movsd XMM1,[arg2]
     add arg2,(4*2) ;<- It jumps two times the size of a float because of memory boundaries
     movsd XMM2,[arg2] 
 
-    _loadimm32_ xmm3,01000000010000000000000000000000b,rax
+    _loadimm32_ xmm3,01000000010000000000000000000000b,eax
 
 
     ;xmm0 [??][??][Ay][Ax]
@@ -60,19 +387,22 @@ TRI2DCENTROID:
     divps xmm0,xmm3
     ;xmm0 [??][??][Ry][Rx]
     movsd [arg1],xmm0
-    ;leave
+    _leave_
     ret
 
 
-global P2DVSSEG2D; char P2DVSSEG2D(float * Point2D, float * Segment2D,char SEGMODE)
+global V2VSV2V2; char V2VSV2V2(float * Point2D, float * Segment2D,char SEGMODE)
 ;*******************************************************************************
 ;Given a 2D point (x,y) and a line segment (define by two 2D points),
 ;this algorithm returns if both intersect.
-;if SEGMODE is set, the segment will be define by and origind and an end.
-;if SEGMODE is clear, the segment will be define by and origin and a direction.
+; SEGMODE: 
+; 4 bits flag:
+;   bit 0 set the notation mode (A+B)(clear) or (A->B)(set)
+;   bit 1 and 2 set the line mode (infinite line, ray or line segment)
+;   bit 3 is a placeholder for now.
 ;********************************************************************************
-P2DVSSEG2D:
-    ;enter 0,0
+V2VSV2V2:
+    _enter_
     xor RAX,RAX    
     
     movsd xmm0,[arg1]		    ;(P.x,P.y)
@@ -84,16 +414,18 @@ P2DVSSEG2D:
     subps xmm4,xmm1 ;xmm4=P-A
     movsd xmm5,xmm2
 
-    cmp arg3,0
-    je P2DVSSEG2D_MODE0:
+    bt arg3,0
+    jnc V2VSV2V2_MODE0
         subps xmm5,xmm1 ;xmm5=B-A; xmm5 = Segment's Direction;
-        jmp P2DVSSEG2D_MODE0_SKIP
-    P2DVSSEG2D_MODE0:
+        jmp V2VSV2V2_MODE0_SKIP
+    V2VSV2V2_MODE0:
         subps xmm2,xmm1;xmm2=B+A; xmm2 = Segment's End;
-    P2DVSSEG2D_MODE0_SKIP:
+    V2VSV2V2_MODE0_SKIP:
 
     CROSSPRODUCTV2 xmm4,xmm5,xmm0,xmm3
     ;xmm0 = AP x AB
+
+    shr arg3,1 ;<-- Get SEGMODE
 
     DotProductXMMV2 xmm5,xmm4,xmm1,xmm3
     ;xmm1 = AB . AP
@@ -103,17 +435,25 @@ P2DVSSEG2D:
 
     pxor xmm3,xmm3
     
-    cmpss xmm0,xmm3,0 ;xmm0= if xmm0 = 0
-    cmpss xmm3,xmm1,2 ;xmm3= if 0 <= xmm1    
-    cmpss xmm1,xmm2,2 ;xmm1= if xmm1 <= xmm2
-	
-    andps xmm1,xmm3
-    andps xmm0,xmm1
+    cmpss xmm0,xmm3,0 ;xmm0= if xmm0 == 0
 
-    ;sub rsp,8
-    ;movss [rsp],xmm0
-    ;mov eax,[rsp]
-    ;add rsp,8
+    cmp arg3,0
+    je V2VSV2V2_INFLINE
+
+    cmpss xmm3,xmm1,2 ;xmm3= if 0 <= xmm1  
+
+    cmp arg3,1
+    je V2VSV2V2_RAY
+
+    cmpss xmm1,xmm2,2 ;xmm1= if xmm1 <= xmm2
+
+    andps xmm3,xmm1
+
+    V2VSV2V2_RAY:
+    andps xmm0,xmm3
+
+    V2VSV2V2_INFLINE:
+
 
     movd eax,xmm0
 
@@ -127,19 +467,19 @@ __set1:
     mov rax,1
 
 __final:
-    ;leave
+    _leave_
     ret
 
 
-global P2DVSTRI2D; char P2DVSTRI2D(float * 2D_Point, float * 2D_Triangle,int bytes_offset);
+global V2VSTRI2_EXT; char V2VSTRI2_EXT(float * 2D_Point, float * 2D_Triangle,int bytes_offset);
 ;***************
 ;Given a 2D Triangle and a 2D Point,
 ;this algorithm returns 1 if the point is inside the Triangle boundaries
 ;else, this algoritm returns 0
 ;The offset can be used if the triangle vertices elements are interleaved with something else 
 ;***************
-P2DVSTRI2D:
-    ;enter 0,0
+V2VSTRI2_EXT:
+    _enter_
 %ifidn __OUTPUT_FORMAT__, win64 
     sub rsp,16*2
     movups [rsp],xmm6
@@ -202,104 +542,219 @@ final:
     movups xmm6,[rsp]
     movups xmm7,[rsp+16]
     add rsp, 16*2
+    args_reset
 %endif
-    ;leave
+    _leave_
     ret
 
-
-global Check_Segment_vs_Segment_2D
-;char Check_Segment_vs_Segment_2D(float * Seg_A, float * Seg_B,char SEGMODE, float * Time_Return);
-;Seg_A = Q -> S
-;Seg_B = P -> R
-Check_Segment_vs_Segment_2D:
-    enter 0,0
     
-    xor RAX,RAX
 
-    movsd xmm0,[arg2]	;xmm0=Q
-    movsd xmm2,[arg1]	;xmm2=P
+
+global V2V2VSV2V2
+;char V2V2VSV2V2 (float * Seg_A, float * Seg_B,char SEGMODE, float * Time_Return);
+;*************************************
+; Given two V2V2, this algorithm calculates if intersect.
+; low 4 bits in SEGMODE is SEGMODE A
+; high 4 bits in SEGMODE is SEGMODE B
+;*************************************
+V2V2VSV2V2:
+    _enter_
+    
+    mov rax,arg3
+    and arg3,0xF
+    shr rax,4
+
+    ;arg3 = SEGMODE A
+    ;rax = SEGMODE B
+
+    movsd xmm0,[arg2]	;xmm0=Q (Aa)
+    movsd xmm2,[arg1]	;xmm2=P (Ba)
     add arg2,8    
-    movsd xmm1,[arg2]	;xmm1=Q+S
-    subps xmm1,xmm0     ;xmm1=Q
+    movsd xmm1,[arg2]	;xmm1= (Ab)
+    bt rax,0
+    jnc S2DVSS2D_SKIPSMA ;if bit 0, clear xmm1= S
+    subps xmm1,xmm0     ;xmm1=S = (Q+S)-Q (Ab)
+    S2DVSS2D_SKIPSMA:
     add arg1,8
     subps xmm0,xmm2	;xmm0 = Q-P
-    movsd xmm3,[arg1]   ;xmm3 = P+R
-    subps xmm3,xmm2     ;xmm3 = P
+    movsd xmm3,[arg1]   ;xmm3 = (Bb)
+    bt arg3,0
+    jnc S2DVSS2D_SKIPSMB ;if bit 0, clear xmm3= R
+    subps xmm3,xmm2     ;xmm3 = R = (P+R) -P (Bb)
+    S2DVSS2D_SKIPSMB:
+    
+    shr arg3,1
 
     CROSSPRODUCTV2 xmm0,xmm1,xmm2,xmm4
     ;xmm2 = (Q-P) x S
-    
+   
+    and arg3,3 
+    shr rax,1
+
     CROSSPRODUCTV2 xmm3,xmm1,xmm4,xmm5
     ;xmm4 = (R x S)
+    
+    shl rax,2
 
     CROSSPRODUCTV2 xmm0,xmm3,xmm1,xmm5
     ;xmm1 = (Q-P) x R
   
+    
+
+    or arg3,rax
  
 %if 1
  
-    sub rsp,8
-    movss [rsp],xmm4
-    mov eax,[rsp]
+    movd eax,xmm4
 
     divss xmm2,xmm4;xmm2 = t = (Q-P) x S / (R x S)
-    
 
     divss xmm1,xmm4;xmm1 = u = (Q-P) x R / (R x S)
    
     movss xmm0,xmm2;<- save to return
 
+    
+    
+
     movlhps xmm1,xmm2
     ;xmm1 = [?][t][?][u]
-    pshufd xmm1,xmm1,10_0_10_00b
+    pshufd xmm1,xmm1,10_00_10_00b
 
     cmp eax,0
     je _final 
     mov rax,0
-    
-    sub rsp,8
 
     pxor xmm2,xmm2
-    movss xmm3,[fc_1f_mem]
-    pshufd xmm3,xmm3,0
-   
-    ;movups [arg3],xmm1
+
+    pcmpeqw xmm3,xmm3
+    pslld xmm3,25
+    psrld xmm3,2
+    ;xmm3 = [1.f][1.f][1.f][1.f]
+
+    ;xmm0 = [][][][t]
+    ;xmm1 = [t][u][t][u]
+    ;xmm2 = [0][0][0][0]
+    ;xmm3 = [1.f][1.f][1.f][1.f]
+    ;arg3 = SEGMODE (u)(t)
+	;arg3 [B][B][A][A]
+
+    mov rax,arg3
 
     cmpps xmm2,xmm1,2 ;xmm2= if 0 <= xmm1    
     cmpps xmm1,xmm3,2 ;xmm1= if xmm1 <= 1.f
+    ;movlhps xmm2,xmm1 ;xmm2 [t<1.f][u<1.f][0<t][0<u]
 
-    ;movups [arg3],xmm2
+    and arg3,3
+    shr rax,2 ;<-- Shift to get needed data
 
-    movlhps xmm2,xmm1
-    ;xmm2 [t<1.f][u<1.f][0<t][0<u]
-
-    ;movups [arg3],xmm2    
+    UNPCKLPS xmm1,xmm2
+    ;xmm1 [t<1.f][0<t][u<1.f][0<u]
     
-    movups [rsp],xmm2
-    mov arg1,[rsp]
-    add rsp,8
-    mov arg2,[rsp]
-    add rsp,8
-    
-    mov arg4,0xFFFFFFFFFFFFFFFF
+    movq arg2,xmm1
+	;arg2 [u<1.f][0<u]
 
-    cmp arg1,arg4
-    jne _final
-    cmp arg2,arg4
-    jne _final
 
-    mov eax,1
-    cmp arg3,0
+    ;FOR SEGMENT B
+    mov arg1,0xFFFFFFFFFFFFFFFF ; Test both conditions (segment mode)
+    cmp rax,0              ; Test none conditions (line mode)
+    jne S2DVSS2D_SKIPSB
+    xor arg1,arg1   ;<-- Setting line mode
+    S2DVSS2D_SKIPSB:
+    cmp rax,1                  ; Test Only 0 <= condition (ray mode)
+    jne S2DVSS2D_SKIPSB_RAY
+        shr arg1,32 ;<-- Setting ray mode by shifting 32 bits right
+    S2DVSS2D_SKIPSB_RAY:
+    and arg2,arg1
+    cmp arg1,arg2
+    jne _finalzero
+
+	PSRLDQ xmm1,(4+4)
+	;xmm1 [0][0][t<1.f][0<t]
+
+    movq arg2,xmm1
+	;arg2 [t<1.f][0<t]
+
+    ;FOR SEGMENT A
+    mov arg1,0xFFFFFFFFFFFFFFFF ; Test both conditions (segment mode)
+    cmp arg3,0              ; Test none conditions (line mode)
+    jne S2DVSS2D_SKIPSA
+    xor arg1,arg1   ;<-- Setting line mode
+    S2DVSS2D_SKIPSA:
+    cmp arg3,1                  ; Test Only 0 <= condition (ray mode)
+    jne S2DVSS2D_SKIPSA_RAY
+        shr arg1,32 ;<-- Setting ray mode by shifting 32 bits right
+    S2DVSS2D_SKIPSA_RAY:
+    and arg2,arg1
+    cmp arg1,arg2
+    jne _finalzero
+
+
+    mov rax,1
+    test arg4,arg4
     je _final
-    movss [arg3],xmm0
+    movss [arg4],xmm0
+    jmp _final
 %endif
-   
+
+_finalzero:
+    xor rax,rax
 _final:
-    leave
+    _leave_
     ret
 
-%endif
+global AABB2CENTROID; void AABB2CENTROID (void * Destiny, void * Source, char AABB2MODE);
+;*************************************************
+;Given a 2D AABB, this algoritm return its center
+;AABB2MODE:
+;     *2 bits flag:
+;     *bit 0 set the notation mode (Center+Half_extent) or (A->B)
+;     *bit 1 set the subnotation mode:
+;        if (A->B) (bit 0 set): (Pivot+Direction) or (Min->Max) 
+;*************************************************
+AABB2CENTROID:
+    _enter_
+        BT arg3,0 ; check if (A->B)
+        jc AABB2CENTROIDCALCULATE
+            ;if it's Center+Half_exntent (bit clear):
+                ;Just memcpy from Source (first point) to Destiny
+            mov rax,[arg2]
+            mov [arg1],rax
+        jmp AABB2CENTROIDEND
+        AABB2CENTROIDCALCULATE:
+            movups xmm1,[arg2]
+            pcmpeqw xmm0,xmm0
+            psllq xmm0,55
+            psrlq xmm0,2
+            movups xmm2,[arg2+8]
 
+            ;xmm0 = [0.5][0.5][0.5][0.5]
+            ;xmm1 = AABB.Axy 
+            ;xmm2 = AABB.Bxy
+
+            BT arg3,1 ; check if (Min->Max)
+            jnc AABB2CENTROIDSKIPMINMAX
+                ;if it's (bit set) Min->Max, then:
+                ;   Max = Max-Min
+                subps xmm2,xmm1
+            AABB2CENTROIDSKIPMINMAX:
+
+            ;xmm0 = [0.5][0.5][0.5][0.5]
+            ;xmm1 = AABB.Origin
+            ;xmm2 = AABB.Dimensions
+
+            mulps xmm2,xmm0  
+
+            ;xmm2 = AABB.Dimensions / 2.0
+
+            addps xmm1,xmm2
+
+            ;xmm1 = AABB.center = AABB.Center + (AABB.Dimensions / 2.0)
+
+            movsd [arg1],xmm1
+
+    AABB2CENTROIDEND:
+    _leave_
+    ret
 
 
 %unmacro CROSSPRODUCTV2 4

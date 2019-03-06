@@ -6,24 +6,99 @@ extern "C"
 {
 #endif
 
-    void TRI2DCENTROID (void * Destiny, void * Source);
-#define TRI2DBARYCENTER TRI2DCENTROID
-#define TRIANGLE2DBARYCENTER TRI2DCENTROID
-#define TRIANGLE2DCENTROID TRI2DCENTROID
+#define POINT2D V2
 
-    char P2DVSSEG2D (void * Point2D, void * LineSegment, char SEGMENTMODE);
-#define POINT2DVSSEGMENT2D P2DVSSEG2D
-#define POINTVSSEGMENT2D P2DVSSEG2D
-#define POINT2DVSV2V2(Point2D,SegmentAB) P2DVSSEG2D(Point2D,SegmentAB,1)
-#define POINT2DVSV2DIR(Point2D,SegmentV2DIR) P2DVSSEG2D(Point2D,SegmentV2DIR,0)
+    struct CIRCLE2
+    {
+        struct {float x,y;} center;
+        float radius;
+    };
 
-    char P2DVSTRI2D(float * 2D_Point, float * 2D_Triangle,int bytes_offset);
-#define POINT2DVSTRIANGLE2D(2D_Point_ptr, 2D_Triangle_ptr) \
-    P2DVSTRI2D(2D_Point_ptr,2D_Triangle_ptr,0)
-#define POINT2DVSTRIANGLE2D_EXT P2DVSTRI2D
-#define POINTVSTRIANGLE2D POINT2DVSTRIANGLE2D
-#define POINTVSTRIANGLE2D_EXT P2DVSTRI2D
+    struct AABB2_A //AABB2 with center and half extends
+    {
+        struct {float x,y;} center,half_extent;
+    };
 
+    struct V2V2V2 //2D TRIANGLE
+    {
+	    struct {float x,y;} vertex[3];
+    };
+#define TRI2 V2V2V2
+#define TRIANGLE2D TRI2
+
+    struct V2V2 //Two 2D points in space
+    {
+        struct{float x,y;} a,b;
+    };
+#define RAY2D V2V2
+#define SEGMENT2D V2V2
+#define LINE2D V2V2
+#define AABB2_B V2V2
+    
+    /**AABB2MODE:
+     *2 bits flag:
+     *bit 0 set the notation mode (Center+Half_extent) or (A->B)
+     *bit 1 set the subnotation mode:
+        if (A->B) (bit 0 set): (Pivot+Direction) or (Min->Max) 
+    void AABB2CENTROID (void * Destiny, void * Source, AABB2MODE);
+
+    char V2VSTRI2(float * Point2D, float * Triangle2D,unsigned int bytes_offset);
+    char V2VSV2(void * A,void *B);
+
+    float V2DISTANCEV2V2(void * Point2D, void * Line, char SEGMODE);
+
+    /**SEGMODE:
+     *4 bits flag:
+	bit 0 set the notation mode (A+B) or (A->B)
+	bit 1 and 2 set the line mode (infinite line, ray or line segment)
+	bit 3 is a placeholder for now.**/	
+
+    /**RETMODE:
+     *2 bits flag:
+     0 = none contact
+     1 = First contact
+     2 = Last contact
+     3 = Both contact **/
+
+    void TRI2CENTROID (void * Destiny, void * Source);
+#define TRI2BARYCENTER TRI2DCENTROID
+
+    void AABB2CENTROID (void * Destiny, void * Source, char AABB2MODE);
+#define AABB2BARYCENTER AABB2CENTROID
+#define AABB2CENTER AABB2CENTROID
+
+    char V2VSTRI2_EXT(float * Point2D, float * Triangle2D,unsigned int bytes_offset);
+#define V2VSTRI2(Point2D_ptr, Triangle2D_ptr)   \
+        V2VSTRI2_EXT(Point2D_ptr,Triangle2D_ptr,0)
+
+    char V2VSV2(void * A,void *B);
+
+    float V2DISTANCEV2V2(void * Point2D, void * Line, char SEGMODE);
+
+
+    char V2VSV2V2 (void * Point2D, void * LineSegment, char SEGMODE);
+    char V2V2VSV2V2 (float * Seg_A, float * Seg_B,char SEGMODE, float * Time_Return);
+
+    char V2VSV2RADIUS(void * Point2D, void * CircleCenter, float Radius);
+#define V2VSV2CIRCLE2(Point2D_ptr,CIRCLE2_ptr) \
+        V2VSV2RADIUS(Point2D_ptr,CIRCLE2_ptr,((float*) CIRCLE2_ptr)+2 ) 
+
+    char V2VSAABB2 (void * Point2D, void * AABB2, char AABB2MODE);
+
+    /*SEGMODE bit 3 is used to set a filled AABB2 (if bit set)*/
+    char V2V2VSAABB2(void * Line2D, void * AABB2, char SEGAABB2RETMODE, float * Times_Return);
+    //Check V2V2VSAABB2
+ 
+
+/*
+    char V2V2VSCIRCLE2(void * Line2D, void * Circle2D, char SEGRETMODE, void * Times_Return);
+
+     char CIRCLE2VSCIRCLE2(void * Circle2D_A,void * Circle2D_B);
+
+    char V2VSPOLY2(void * Point2D,void * verticesbuffer,unsigned int vertices count);
+    char POLY2SAT(void * VerticesBuffer_A, unsigned int vertices Count_A,
+    void * VerticesBuffer_B, unsigned int vertices Count_B);
+*/
 
 #ifdef __cplusplus
 }
