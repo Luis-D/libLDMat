@@ -1,15 +1,17 @@
-# libLDM
+# libLDMat
 The fast, low level and non-bloated (*maybe*) math library.
 
 ###### This library is conformant with:
  *  **x86-64**:
     * System V AMD64 ABI (*nix systems)
     * Microsoft x64 calling convention (Windows) 
-    
+ *  **ARMv7-A**:
+    * Procedure Call Standard for the ARM Architecture
+ 
 ### Tutorial:
 
 #### Data types:
-  The next datatypes are the one currently handled by the library:
+  The next datatypes are the ones currently handled by the library:
 >(Matrices are Row Major).
 * **SS**: *float*. IEEE-754 single precision floating point number.
 * **DS**: *double* . IEEE-754 double precision floating point number.
@@ -87,7 +89,7 @@ Scalar parameters are passed as value.
 Most scalar only operations uses this format:
 ```C
 float OPERATION(float Source);
-double OPERATION(fdouble Source);
+double OPERATION(double Source);
 ```
 For more complex operations refer to the respective definition files.
 
@@ -95,7 +97,7 @@ For more complex operations refer to the respective definition files.
 ##### C/C++:
 ###### Example:
 ```C
-#include "LDM/LDM.h"
+#include "LDMat/LDMat.h"
 #include "stdio.h"
 
 int main()
