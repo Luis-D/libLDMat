@@ -1,3 +1,4 @@
+; Luis Delgado. 2019
 ; To be used with NASM-Compatible Assemblers
 ; For x86-64 architecture.
 
@@ -28,8 +29,7 @@
 ; Format =
 ; INSTRUCTION(Destiny, Operand1, Operand2, Operand3, ... , OperandN)
 
-; Luis Delgado. 2019
-; Original Source code from Boring-NASM-Code.
+; Original Source code from Luis-D/Boring-NASM-Code.
 
 ; Collection of mathematical functions and MACROS, very useful for algebra.
 
@@ -38,6 +38,7 @@
 ;February 05,2019: 2D Norm fixed
 ;February 28,2019: Projection and view matrix operations added.
 ;March   02, 2019: Many errors fixed.
+;March	 14, 2019: Windows routines prologues fixed.
 
 ;Notes:
 ;   - Matrices are ROW MAJOR.
@@ -1506,7 +1507,7 @@ global M2MAKE; void M2MAKE(void * Destiny, float Scale)
     movaps arg1f,arg2f
 %endif
 	pshufd arg1f,arg1f,00_11_11_00b
-	movntps [arg1],arg1f
+	movups [arg1],arg1f
         _leave_
         ret
 %ifidn __OUTPUT_FORMAT__, win64 
@@ -1536,7 +1537,7 @@ global M2MUL; void M2MUL(void * Destiny, void * A, void * B);
              movups xmm2,[arg2]
              movups xmm3,[arg3]
              _M2MUL_ xmm1,xmm2,xmm3,xmm4,xmm5
-             movntps [arg1],xmm1
+             movups [arg1],xmm1
          _leave_
          ret
 
@@ -2254,9 +2255,8 @@ global M4PERSPECTIVE
 ;*********************************************************************
 ;It's an implementation of gluPerspective
 ;*********************************************************************
-M4PERSPECTIVE: 
-
-    _enter_
+M4PERSPECTIVE:
+ 
 
 %ifidn __OUTPUT_FORMAT__, win64 
     %define arg1f XMM1
@@ -2266,8 +2266,26 @@ M4PERSPECTIVE:
 
     ;zfar is in the stack, so it must be move to XMM4
 
-    movss xmm4,arg5
+    movss arg4f,[rsp+40]
+
 %endif
+
+    _enter_
+
+%ifidn __OUTPUT_FORMAT__, win64 
+
+        sub rsp,16*2
+    movups [rsp],xmm6
+    movups [rsp+16],xmm7
+%endif
+
+    sub rsp,16*6
+    movups [rsp],xmm9
+    movups [rsp+16],xmm10
+    movups [rsp+16+16],xmm11
+    movups [rsp+16+16+16],xmm12
+    movups [rsp+16+16+16+16],xmm13
+    movups [rsp+16+16+16+16+16],xmm14
 
     mov rax, fc_360f
 	    pxor xmm12,xmm12
@@ -2327,12 +2345,26 @@ sub rsp,8
         mov    [arg1+16+16+12],rax
 
 add rsp,16
-    _leave_
+
+    movups xmm9,[rsp]
+    movups xmm10,[rsp+16]
+    movups xmm11,[rsp+16+16]
+    movups xmm12,[rsp+16+16+16]
+    movups xmm13,[rsp+16+16+16+16]
+    movups xmm14,[rsp+16+16+16+16+16]
+    add rsp,16*6
+
+
 
 %ifidn __OUTPUT_FORMAT__, win64 
+
+      movups xmm6,[rsp]
+    movups xmm7,[rsp+16]
+    add rsp, 16*2
+
 args_reset
 %endif
-
+    _leave_
     ret
 
 
@@ -2343,25 +2375,40 @@ global M4ORTHO;
 
 M4ORTHO: 
 
+
+    %define arg5f XMM4
 %ifidn __OUTPUT_FORMAT__, win64 
     %define arg1f XMM1
     %define arg2f XMM2
     %define arg3f XMM3
     %define arg4f XMM4
+    %define arg5f XMM0
 
-    ;zfar is in the stack, so it must be move to XMM4
+    ;zfar is in the stack, so it have to be moved to XMM4
 
-    movss xmm4,arg5
+    movss arg4f,[rsp+32+8]
+
+    
 %endif
 
     _enter_
 
+%ifidn __OUTPUT_FORMAT__, win64 
+    sub rsp,16*2
+    movups [rsp],xmm6
+    movups [rsp+16],xmm7
+
+
+%endif
+
+;    movss [arg1],arg4f
+
     mov arg2,fc_2f
-    movss xmm4,arg4f
-    subss xmm4,arg3f
+    movss arg5f,arg4f
+    subss arg5f,arg3f
     push arg2
     addss arg4f,arg3f
-    divss arg4f,xmm4
+    divss arg4f,arg5f
     movss arg3f,[rsp]
     pxor xmm5,xmm5
     pxor xmm6,xmm6
@@ -2372,32 +2419,63 @@ M4ORTHO:
     divss xmm7,arg2f
     subss xmm6,arg1f
     subss xmm5,arg4f
-    divss xmm6,xmm4
+    divss xmm6,arg5f
 
 ;arg3f = 2/Width
 ;arg4f = (zfar+znear)/(zfar-znear)
-;xmm4 = zfar-znear
+;arg5f = zfar-znear
 ;xmm5 = -((zfar+znear)/(zfar-znear))
-;xmm6 = -2
+;xmm6 = -2 / ((zfar+znear)/(zfar-znear))
 ;xmm7 = 2/Height
 
-    movss [arg1],arg3f
-    movss [arg1+ (4*5)],xmm7
-    movss [arg1+ (4*10)],xmm6
+%if 1
+    pxor arg1f,arg1f
+    movss arg1f,arg3f
+    ;arg1f = [0][0][0][2/Width]
+    movups [arg1],arg1f
 
 
-    add rsp,16
+    pxor arg2f,arg2f
+    movss arg2f,xmm7
+    pslldq arg2f,4
+    ;arg2f = [0][0][2/Height][0]
+    movups [arg1+ (4*4)],arg2f
 
-    movss [arg1+ (4*14)],xmm5
+
+    pxor arg3f,arg3f
+    movss arg3f,xmm6
+    pslldq arg3f,4+4
+    ;arg3f = [0][xmm6][0][0]
+    movups [arg1+ (4*4*2)],arg3f
+
+
+    pxor arg1f,arg1f
+    movss arg1f,xmm5
+    pslldq arg1f,4+4
+    ;arg1f = [0][xmm5][0][0]   
+
+    movups [arg1+ (4*4*3)],arg1f
     mov [arg1+16+16+16+12],eax
+%endif
 
-    _leave_
+    pop rax
 
 %ifidn __OUTPUT_FORMAT__, win64 
+
+    movups xmm6,[rsp]
+    movups xmm7,[rsp+16]
+    add rsp, 16*2
+
     args_reset
 %endif
 
+    _leave_
+
     ret
+
+%undef arg5f
+    
+
 
 global M4LOOKAT
 ; M4LOOKAT(float * matrix, float * Vec3From_EYE, float * Vec3To_CENTER, float * Vec3Up);
@@ -2408,6 +2486,21 @@ M4LOOKAT:
 
     _enter_ 
 
+    %ifidn __OUTPUT_FORMAT__, win64 
+
+        sub rsp,16*2
+    movups [rsp],xmm6
+    movups [rsp+16],xmm7
+%endif
+
+    sub rsp,16*6
+    movups [rsp],xmm8
+    movups [rsp+16],xmm11
+    movups [rsp+16+16],xmm12
+    movups [rsp+16+16+16],xmm13
+    movups [rsp+16+16+16+16],xmm14
+    movups [rsp+16+16+16+16+16],xmm15
+
     push rax
     xor eax,eax
     mov eax,fc_m_1f
@@ -2415,9 +2508,9 @@ M4LOOKAT:
 
     pxor arg4f,arg4f
 
-    movups xmm9, [arg2] ;EYE
+    movups xmm7, [arg2] ;EYE
     movups xmm15, [arg3] ;CENTER
-    subps xmm15,xmm9 ;xmm15 = f = CENTER - EYE
+    subps xmm15,xmm7 ;xmm15 = f = CENTER - EYE
 
     movups xmm14, [arg4]
     ;---Normalize f----;
@@ -2441,7 +2534,7 @@ M4LOOKAT:
     ;-----------------;
 
     ;Resume:
-    ;xmm9 = eye
+    ;xmm7 = eye
     ;xmm15 = f
     ;xmm14 = up
     ;xmm13 = s
@@ -2456,25 +2549,25 @@ M4LOOKAT:
     ;-------------------------;
 
     ;Resume:
-    ;xmm9 = eye
+    ;xmm7 = eye
     ;xmm15 = f
     ;xmm14 = u
     ;xmm13 = s 
 
     ;calculate -( s . eye )
-    DotProductXMMV3 xmm13,xmm9,xmm12,arg1f
+    DotProductXMMV3 xmm13,xmm7,xmm12,arg1f
     mulss xmm12,xmm8
     ;------------------------------;
 
     pop rax
 
     ;calculate -( u . eye )
-    DotProductXMMV3 xmm14,xmm9,xmm11,arg1f
+    DotProductXMMV3 xmm14,xmm7,xmm11,arg1f
     mulss xmm11,xmm8
     ;------------------------------;
 
     ;calculate ( f . eye )
-    DotProductXMMV3 xmm15,xmm9,xmm10,arg1f
+    DotProductXMMV3 xmm15,xmm7,xmm6,arg1f
     ;------------------------------;  
 
     ;do f=-f;
@@ -2483,17 +2576,17 @@ M4LOOKAT:
 
     ;Resume:
     ;xmm8 = [-1][-1][-1][-1]
-    ;xmm9 = eye
+    ;xmm7 = eye
     ;xmm15 = -f
     ;xmm14 = u
     ;xmm13 = s 
     ;xmm12 = -dot (s,eye)
     ;xmm11 = -dot (u,eye)
-    ;xmm10 = +dot (f,eye)
+    ;xmm6 = +dot (f,eye)
 
     mulps xmm8,xmm8
     ;xmm8 = [1.f][1.f][1.f][1.f]
-    movss xmm8,xmm10
+    movss xmm8,xmm6
     ;xmm8 = [1.f][1.f][1.f][+dot(f,eye)]
     movlhps xmm8,xmm8
     ;xmm8 = [1.f][+dot(f,eye)][1.f][+dot(f,eye)]
@@ -2516,8 +2609,30 @@ M4LOOKAT:
     add arg1,16
     movaps [arg1],xmm8
 
+
+
+
+
+    movups xmm8,[rsp]
+    movups xmm11,[rsp+16]
+    movups xmm12,[rsp+16+16]
+    movups xmm13,[rsp+16+16+16]
+    movups xmm14,[rsp+16+16+16+16]
+    movups xmm15,[rsp+16+16+16+16+16]
+    add rsp,16*6
+
+
+
+%ifidn __OUTPUT_FORMAT__, win64 
+
+    movups xmm6,[rsp]
+    movups xmm7,[rsp+16]
+    add rsp, 16*2
+
+args_reset
+%endif
     _leave_
-ret
+    ret
 
 
 

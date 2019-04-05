@@ -6,7 +6,7 @@
 ;MACROS
 ;*****************************
 
-;%define _FRAMESTACKPOINTER_
+%define _FRAMESTACKPOINTER_
 
 %macro _enter_ 0
 %ifdef _FRAMESTACKPOINTER_ 
