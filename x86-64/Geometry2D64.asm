@@ -140,9 +140,9 @@ V2V2VSAABB2:
     movups xmm2,[arg2]
     pxor xmm5,xmm5
     
-    BT arg3,0 ; check if line is (A->B) or (A+B)
+    BT arg3,0 ; check if line is (A+B) or (A->B)
     jnc V2V2VSAABB2SKIPLINESUM
-        addps xmm1,xmm0
+        subps xmm1,xmm0
     V2V2VSAABB2SKIPLINESUM:
 
     movhlps xmm3,xmm2
@@ -171,6 +171,8 @@ V2V2VSAABB2:
     ;xmm4 = 0
     ;xmm5 = 0
 
+
+    
     xor arg1,arg1 ; arg1 will be used to record volume collision
     bt arg3,3 ;check if collide with the volume is set
     jnc V2V2VSAABB2SKIPCHECKINSIDE
@@ -179,24 +181,18 @@ V2V2VSAABB2:
         ;xmm4: [][][Py][Px]
         ;xmm5: [][][Min.y][Min.x]
         ;xmm3: [][][Max.y][Max.x]
-
         ;check if xmm5 <= xmm4
         cmpps xmm5,xmm0,2
-
         ;check if xmm4 <= xmm3
         cmpps xmm4,xmm2,2
-
         pand xmm4,xmm5
-
         pcmpeqd xmm5, xmm5 
         pxor xmm4,xmm5
-
         ptest xmm4,xmm4 ;if zero, then the point is inside the AABB
         jnz V2V2VSAABB2SKIPCHECKINSIDE
         mov arg1,1
-
-
     V2V2VSAABB2SKIPCHECKINSIDE:
+
 
     ;Calculate FirstCol = (Min - LA) / LB
     subps xmm2,xmm0
@@ -227,11 +223,17 @@ V2V2VSAABB2:
     cmpps xmm5,xmm2,2 ;LCy <= FCx
     cmpps xmm1,xmm4,2 ;LCx <= FCy
     por xmm1,xmm5     ;(LCy <= FCx || LCx <= FCy)
-    ptest xmm1,xmm1 ;if(LCy <= FCx || LCx <= FCy)
-    jnz V2V2AABBSKIPCHECKIFINSIDE
+
+    pxor xmm5,xmm5
+    movss xmm5,xmm1
+    ptest xmm5,xmm5 ;if(LCy <= FCx || LCx <= FCy)
+    jz V2V2AABBSKIPCHECKIFINSIDE
         bt arg1,0 ;check if a collision with the inside has been done
         jc V2V2AABBENDONE ;jump if collided
+	jmp V2V2AABBENDZERO
     V2V2AABBSKIPCHECKIFINSIDE:
+
+%if 1
 
     ;rax = Line Mode
     ;arg3 = Return Mode
@@ -240,23 +242,23 @@ V2V2VSAABB2:
     cmp arg3,0 ;if no time returns
     je V2V2AABBSKIPSTORE ;return no time
 
-    bt arg3,2 ;check if return last collision is enabled
+    movshdup xmm5,xmm3
+
+    bt arg3,1 ;check if return last collision is enabled
     jnc V2V2AABBNOLAST
         movss xmm0,xmm3
         ucomiss xmm5,xmm3 ;check if LCy <= LCx
-        ja V2V2AABBNOLAST
+        jbe V2V2AABBNOLAST
             movss xmm0,xmm5
-
     V2V2AABBNOLAST:
 
-    bt arg3,1 ;check if return first collision is enabled
+    bt arg3,0 ;check if return first collision is enabled
     jnc V2V2AABBNOFIRST
         psllq xmm0,4 ;shift the float to make space for the new result
         movss xmm0,xmm2 
         ucomiss xmm4,xmm2 
-        ja V2V2AABBNOFIRST
+        jbe V2V2AABBNOFIRST
             movss xmm0,xmm4
-
     V2V2AABBNOFIRST:
 
     ;xmm0 [][][LCT][FCT]
@@ -265,12 +267,14 @@ V2V2VSAABB2:
 
     cmp arg3,3
     je V2V2AABBSTOREBOTH
-        movsd [arg4],xmm0 ;Store the two results
+        movss [arg4],xmm0 ;Store the two results
         jmp V2V2AABBSKIPSTORE
     V2V2AABBSTOREBOTH:
-        movss [arg4],xmm0 ;Store one retult
+        movsd [arg4],xmm0 ;Store one retult
 
     V2V2AABBSKIPSTORE:
+
+%endif
 
     ;Load 1.0
     pcmpeqw xmm3,xmm3
@@ -283,20 +287,20 @@ V2V2VSAABB2:
 
     ;check times according with line type
 
-    test arg3,arg3; if infinite (arg3==0), then skip checking boundaries
+    test rax,rax; if infinite (arg3==0), then skip checking boundaries
     jz V2V2AABBENDONE
 
     ;check if 0<= first (or only) time
     ucomiss xmm0,xmm2
-    ja V2V2AABBENDZERO; if 0 is above times (only first time), then return 0
+    jb V2V2AABBENDZERO; if times (only first time) is below 0, then return 0
 
 
-    cmp arg3,2; check if line is a line segment
-    jne V2V2AABBENDZERO
+    BT rax,1; check if line is a line segment
+    jnc V2V2AABBENDONE
 
     ;check if first (or only) time is <=1
 
-    ucomiss xmm2,xmm3
+    ucomiss xmm0,xmm3
     ja V2V2AABBENDZERO; if the time is above 1, then return 0
     
     V2V2AABBENDONE:
@@ -305,9 +309,9 @@ V2V2VSAABB2:
     V2V2AABBENDZERO:
     xor rax,rax
     V2V2AABBEND:
-
     _leave_
     ret
+
 
 global V2VSV2RADIUS; char V2VSV2RADIUS(void * Point2D, void * CircleCenter, float Radius)
 ;****************************************************************
@@ -756,6 +760,156 @@ AABB2CENTROID:
     _leave_
     ret
 
+global AABB2VSAABB2 ;char AABB2VSAABB2(void* AABB2_A,void * AABB2_B, char AABB2MODE);
+;************************************************************************;
+;Given two 2D AABB, this algoritm return if they intersects
+;AABB2MODE:
+;     *2 bits flag:
+;     *bit 0 set the notation mode (Center+Half_extent) or (A->B)
+;     *bit 1 set the subnotation mode:
+;        if (A->B) (bit 0 set): (Pivot+Direction) or (Min->Max)
+;AABB2_A Flag: 0 ~ 3
+;AABB2_B Flag: 4 ~ 7
+;************************************************************************;
+    AABB2VSAABB2:
+    _enter_
+	movups xmm0,[arg1]
+	
+	pcmpeqw xmm4,xmm4
+        psllq xmm4,55
+        psrlq xmm4,2
+    
+	movups xmm2,[arg2]
+	xor rax,rax
+
+	pcmpeqw xmm5,xmm5
+	psrld xmm5,1
+
+	movhlps xmm1,xmm0
+	BT arg3,0
+	jnc AABB2VSAABB2_ACH
+		BT arg3,1
+		jnc AABB2VSAABB2_APD
+		    subps xmm1,xmm0
+		AABB2VSAABB2_APD:
+		mulps xmm1,xmm4
+		addps xmm0,xmm1
+	AABB2VSAABB2_ACH:
+
+	mov arg4,1
+
+	movhlps xmm3,xmm2
+	BT arg3,4
+	jnc AABB2VSAABB2_BCH
+		BT arg3,5
+		jnc AABB2VSAABB2_BPD
+		    subps xmm3,xmm2
+		AABB2VSAABB2_BPD:
+		mulps xmm3,xmm4
+		addps xmm2,xmm3
+	AABB2VSAABB2_BCH:
+
+	subps xmm0,xmm2	
+	addps xmm1,xmm3
+	pand xmm0,xmm5
+	
+	cmpss xmm4,xmm4,0
+
+	cmpps xmm0,xmm1,2
+	movshdup xmm1,xmm0
+	pand xmm0,xmm1
+	ucomiss xmm0,xmm4
+	cmove rax,arg4
+
+    _leave_
+    ret
+
+global CIRCLE2VSAABB2;char CIRCLE2VSAABB2(void* CIRCLE2,void * AABB2, char AABB2MODE);
+;************************************************************************;
+;Given a 2D Circle and a 2D AABB, this algoritm return if they intersect
+;AABB2MODE:
+;     *2 bits flag:
+;     *bit 0 set the notation mode (Center+Half_extent) or (A->B)
+;     *bit 1 set the subnotation mode:
+;        if (A->B) (bit 0 set): (Pivot+Direction) or (Min->Max)
+;************************************************************************;
+    CIRCLE2VSAABB2:
+	_enter_
+	xor rax,rax
+	movss xmm2,[arg2]
+	movsd xmm0,[arg1]
+	
+	movhlps xmm3,xmm2
+        BT arg3,0
+        jc AABB2VSAABB2_CH__
+            BT arg3,1
+            js CIRCLE2VSAABB2_AABBREADY
+                addps xmm3,xmm2
+                jmp CIRCLE2VSAABB2_AABBREADY
+	AABB2VSAABB2_CH__:
+	    movsd xmm4,xmm3
+	    addps xmm3,xmm2
+	    subps xmm2,xmm4
+	CIRCLE2VSAABB2_AABBREADY:
+
+ 	movss xmm1,[arg1+8]
+	
+	movups xmm4,xmm0
+	movups xmm5,xmm0
+	
+	mulss xmm1,xmm1
+
+	mov arg4,1
+
+    ;Calculate Square Distance from Center to AABB -> xmm0
+	cmpps xmm5,xmm2,1
+	subps xmm2,xmm0
+	mulps xmm2,xmm2
+	pand xmm2,xmm5
+
+	cmpps xmm3,xmm0,1
+	subps xmm4,xmm3
+	mulps xmm4,xmm4
+	pand xmm4,xmm3
+
+	addps xmm2,xmm4
+	movshdup xmm0,xmm2
+	addss xmm0,xmm2
+    ;----------------------------------------------------;
+   
+	ucomiss xmm0,xmm1
+	cmovbe rax,arg4 
+    
+    _leave_
+    ret
+
+global CIRCLE2VSCIRCLE2;char CIRCLE2VSCIRCLE2(void * Circle2D_A,void * Circle2D_B);
+    CIRCLE2VSCIRCLE2:
+    _enter_
+	xor rax,rax
+	movsd xmm0,[arg1]
+	movss xmm1,[arg1+8]
+	mov arg4,1
+	movsd xmm2,[arg2]
+	movss xmm3,[arg2+8]
+	subps xmm2,xmm0
+	addss xmm1,xmm3
+	mulps xmm2,xmm2
+	movshdup xmm0,xmm2
+	addss xmm2,xmm0
+	sqrtss xmm2,xmm2
+	ucomiss xmm2,xmm1
+	cmovbe rax,arg4
+    _leave_
+    ret
+
+
+global V2VSPOLY2;  char V2VSPOLY2(void * Point2D,void * verticesbuffer,unsigned int vertices count);
+    V2VSPOLY2:
+    _enter_
+	 
+    _leave_
+    ret
 
 %unmacro CROSSPRODUCTV2 4
 %unmacro DotProductXMMV2 4
