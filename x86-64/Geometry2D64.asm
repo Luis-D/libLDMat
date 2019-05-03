@@ -904,10 +904,81 @@ global CIRCLE2VSCIRCLE2;char CIRCLE2VSCIRCLE2(void * Circle2D_A,void * Circle2D_
     ret
 
 
-global V2VSPOLY2;  char V2VSPOLY2(void * Point2D,void * verticesbuffer,unsigned int vertices count);
+global V2VSPOLY2;  char V2VSPOLY2(void * Point2D,void * 2Dverticesbuffer,unsigned int vertices count);
+;********************
+;Implementation of: http://geomalgorithms.com/a03-_inclusion.html#wn_PnPoly()
+;********************
     V2VSPOLY2:
     _enter_
-	 
+	push r10
+	push r11
+	xor rax,rax
+	cmp arg3,3
+	jb V2VSPOLY2END
+	mov r10,arg2
+
+	movss xmm3,[arg1]
+	xor r11,r11
+	
+	
+	mov arg4,arg2
+
+	V2VSPOLY2LOOP:
+	    dec arg3
+	    add arg4,(4*2)
+	    test arg3,arg3
+	    cmovz arg4,r10
+
+	    movss xmm0,xmm3
+	    movss xmm1,[arg2]
+	    movss xmm2,[arg4]
+	    movshdup xmm4,xmm1
+	    movshdup xmm5,xmm2
+
+	    subps xmm2,xmm1
+	    subps xmm0,xmm1
+	    pshufd xmm1,xmm0,11100001b
+	    mulps xmm1,xmm2
+	    movshdup xmm2,xmm1
+	    subss xmm1,xmm2	   
+ 
+	    pxor xmm2,xmm2
+
+	    movshdup xmm0,xmm3
+
+	    
+	    ucomiss xmm0,xmm4
+	    ja V2VSPOLY2LOOPNOTESTNEEDED
+		ucomiss xmm5,xmm4
+		jna V2VSPOLY2LOOPNOTESTEND
+		    ucomiss xmm1,xmm2
+		    jna V2VSPOLY2LOOPNOTESTEND
+			inc r11
+
+	    jmp V2VSPOLY2LOOPNOTESTEND
+	    V2VSPOLY2LOOPNOTESTNEEDED:
+		ucomiss xmm5,xmm4
+		ja V2VSPOLY2LOOPNOTESTEND
+		    ucomiss xmm1,xmm2
+		    jnb V2VSPOLY2LOOPNOTESTEND
+			dec r11
+	   
+	    V2VSPOLY2LOOPNOTESTEND:
+
+
+	    mov arg2,arg4
+	test arg3,arg3
+	jnz V2VSPOLY2LOOP
+   
+	mov arg4,1
+
+	test r11,r11
+	cmovnz rax,arg4
+
+ 
+	V2VSPOLY2END:
+	pop r11
+	pop r10
     _leave_
     ret
 

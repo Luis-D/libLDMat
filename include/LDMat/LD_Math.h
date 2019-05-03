@@ -79,7 +79,7 @@ extern "C"
     #define DEGTOQUAT(Destiny,Axis,Degrees) EULERTOQUAT(Destiny,Axis,DEGTORAD(Degrees))
     void UQUATINV(void * Destiny, void * Unit_Quaternion);
     void UQUATDIFF(void * Destiny, void * A, void * B);
-    
+    void UQUATNLERP(void * Destiny, void * A, void * B, float Factor);
     
     void M2MAKE(void * Destiny, float Scale);
     #define M2IDENTITY(Destiny) M2MAKE(Destiny,1.f)

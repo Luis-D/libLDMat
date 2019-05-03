@@ -39,6 +39,7 @@
 ;February 28,2019: Projection and view matrix operations added.
 ;March   02, 2019: Many errors fixed.
 ;March	 14, 2019: Windows routines prologues fixed.
+;April	 02, 2019: Quaternion Normalized LERP added.
 
 ;Notes:
 ;   - Matrices are ROW MAJOR.
@@ -1457,6 +1458,26 @@ UQUATINV:
 	;xmm0 [0][sb][sb][sb]
 	pxor xmm1,xmm0
 	movntps [arg1],xmm1
+    _leave_
+    ret
+
+
+global UQUATNLERP; void UQUATNLERP(void * Result, void * UQuaternionA,void * UQuaternionB,float Factor)
+;********************************************************************************
+;Given two quaternions, this algorithm returns the Normalized interpolation by a
+;given factor.
+;********************************************************************************
+UQUATNLERP:
+    _enter_
+%ifidn __OUTPUT_FORMAT__, win64
+	movaps xmm0,xmm3
+%endif
+	movups xmm4,[arg2]
+	pshufd xmm0,xmm0,0
+	movups xmm5,[arg3]
+	_V4Lerp_ xmm1,xmm4,xmm5,xmm0
+	_V4NORMALIZE_ xmm2,xmm1,xmm3,xmm4
+	movups [arg1],xmm2
     _leave_
     ret
 

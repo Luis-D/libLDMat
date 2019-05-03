@@ -103,11 +103,11 @@ SEGAABB2RETMODE:
     char AABB2VSAABB2(void* AABB2_A,void * AABB2_B, char AABB2MODE);
     char CIRCLE2VSCIRCLE2(void * Circle2D_A,void * Circle2D_B);
     char CIRCLE2VSAABB2(void* CIRCLE2,void * AABB2, char AABB2MODE);
+    char V2VSPOLY2(void * Point_2D, void * Vertices_Buffer_2D,unsigned int VerticesCount);
+
 
 /*
     char V2V2VSCIRCLE2(void * Line2D, void * Circle2D, char SEGRETMODE, void * Times_Return);
-
-
     char POLY2SAT(void * VerticesBuffer_A, unsigned int vertices Count_A,
     void * VerticesBuffer_B, unsigned int vertices Count_B);
 */
