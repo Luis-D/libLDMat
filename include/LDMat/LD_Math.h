@@ -13,15 +13,17 @@
     void X##SUB BPara;          \
     void X##MUL BPara;          \
     void X##DIV BPara;          \
-    void X##DOT BPara;          \
+    float X##DOT GET2Para;      \
     void X##NORMALIZE PROCPara; \
     void X##LERP LERPPara;      \
     float X##NORM GETPara;      \
-    float X##DISTANCE GETPara
+    float X##DISTANCE GET2Para; \
+    void X##INV PROCPara
 
 #define SArith(X)               \
     void X##MULSS BSSPara;      \
-    void X##DIVSS BSSPara
+    void X##DIVSS BSSPara;	\
+    void X##MADSS LERPPara
 
 #define VCross(X)               \
     void X##CROSS BPara
@@ -42,24 +44,29 @@ extern "C"
     typedef struct V3{float x,y,z;}V3;
     typedef struct V2{float x,y;}V2;
     typedef float SS;
-    typedef double DS;
+    typedef double SD;
     typedef float ANGLE;
     typedef struct M2{struct V2 column[2];}M2;
     typedef struct M4{struct V4 column[4];}M4;
     typedef struct EULER{struct V3 axis; float angle;}EULER;
     /******************/
 
+    float SSMAD(float A, float B, float Factor);
     float SSLERP(float A, float B,float Factor);
-    double DSLERP(double A, double B,double Factor);
+    float SSABS(float Value);
+    float SSCLAMP(float Value, float Min, float Max);
+    double SDMAD(double A, double B,double Factor);
+    double SDLERP(double A, double B,double Factor);
 
     VArith(V4);
     SArith(V4);
 
     VArith(V2);
     SArith(V2);
-    VCross(V2);
     VAngle(V2);
     void ANGLEROTV2(void * Destiny, void * Source, float Radians_Angle);
+    void V2TRANSPOSE(void * Destiny, void * Source);
+    float V2CROSS(void * A, void * B);
     float RADTODEG(float Radian);
     float DEGTORAD(float Radian);
     #define RADROTV2 ANGLEROTV2

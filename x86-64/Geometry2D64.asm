@@ -14,8 +14,45 @@ args_reset ;<--Sets arguments definitions to normal, as it's definitions can cha
 
 ;/********MACROS***********/
 
+%macro DotProductXMMV2 4
+;%1 and %2 are registers to proccess
+;%3 is the result ;Result stored in the first 32-bits
+;%4 is a temporal register
+movsd %3, %1
+mulps  %3, %2
+movshdup %4,%3
+addss    %3,%4
+%endmacro
+%macro _V2DOT_ 4
+;%1 is the result ;Result stored in the first 32-bits
+;%2 and %3 are registers to proccess
+;%4 is a temporal register
+DotProductXMMV2 %2, %3, %1, %4
+%endmacro
 
+%macro _V2NORM_imm  2
+;%1 Destiny/Source Operand (float)
+;%2 Temporal Operand (2D vector of floats)
+	   mulps %1,%1
+	   movshdup %2,%1
+	   addss   %1,%2
+	   sqrtss  %1,%1
+%endmacro
 
+%macro _V2NORMALIZE_ 4
+;%1 = Destination Operand
+;%2 = Source Operand
+;%3 = Temporal Operand (Trasheable)
+;%4 = Temporal Operand (Trasheable)
+movaps %4,%2
+movaps %1,%2
+mulps %4,%4
+movshdup %3,%4
+addss    %4,%3
+sqrtss   %4,%4
+movsldup   %4,%4,
+divps    %1,%4
+%endmacro
 
 %macro CROSSPRODUCTV2 4
 ;%1 and %2 Registers to operate with
@@ -29,15 +66,6 @@ movshdup %4, %3
 subss %3,%4
 %endmacro
 
-%macro DotProductXMMV2 4
-;%1 and %2 are registers to proccess
-;%3 is the result ;Result stored in the first 32-bits
-;%4 is a temporal register
-	movsd %3, %1
-	mulps  %3, %2
-	movshdup %4,%3
-	addss    %3,%4
-%endmacro
 ;/*************************/
 
 
@@ -173,6 +201,8 @@ V2V2VSAABB2:
 
 
     
+
+%if 0 ;Deactivated because of ptest
     xor arg1,arg1 ; arg1 will be used to record volume collision
     bt arg3,3 ;check if collide with the volume is set
     jnc V2V2VSAABB2SKIPCHECKINSIDE
@@ -192,7 +222,7 @@ V2V2VSAABB2:
         jnz V2V2VSAABB2SKIPCHECKINSIDE
         mov arg1,1
     V2V2VSAABB2SKIPCHECKINSIDE:
-
+%endif
 
     ;Calculate FirstCol = (Min - LA) / LB
     subps xmm2,xmm0
@@ -204,7 +234,7 @@ V2V2VSAABB2:
     subps xmm3,xmm0
     divps xmm3,xmm1
 
-    
+;    movsd [arg1],xmm2 
 
     movshdup xmm4,xmm2
     movshdup xmm5,xmm3
@@ -215,21 +245,43 @@ V2V2VSAABB2:
     ;xmm5= [][][][LCy]
 
 
-    movaps xmm1,xmm3
-    ;xmm1 = [][][LCy][LCx]
 
+    ucomiss xmm2,xmm3
+    jna V2V2AABBSKIPMINMAX
+	pxor xmm2,xmm3
+	pxor xmm3,xmm2
+	pxor xmm2,xmm3
+    V2V2AABBSKIPMINMAX:
 
-    ; Do: if (LCy <= FCx || LCx <= FCy) then "Does not collide"
-    cmpps xmm5,xmm2,2 ;LCy <= FCx
-    cmpps xmm1,xmm4,2 ;LCx <= FCy
-    por xmm1,xmm5     ;(LCy <= FCx || LCx <= FCy)
+    ucomiss xmm4,xmm5
+    jna V2V2AABBSKIPMINMAXY
+	pxor xmm4,xmm5
+	pxor xmm5,xmm4
+	pxor xmm4,xmm5
+    V2V2AABBSKIPMINMAXY:
+    
+    ucomiss xmm5,xmm2
+    jbe V2V2AABBCHECKIFINSIDE
+    ucomiss xmm3,xmm4
+    jbe V2V2AABBCHECKIFINSIDE
 
-    pxor xmm5,xmm5
-    movss xmm5,xmm1
-    ptest xmm5,xmm5 ;if(LCy <= FCx || LCx <= FCy)
-    jz V2V2AABBSKIPCHECKIFINSIDE
-        bt arg1,0 ;check if a collision with the inside has been done
-        jc V2V2AABBENDONE ;jump if collided
+    ucomiss xmm4,xmm2
+    jna V2V2AABBSKIPMINMAXF
+	movss xmm2,xmm4
+    V2V2AABBSKIPMINMAXF:
+
+    ucomiss xmm5,xmm3
+    jnb V2V2AABBSKIPMINMAXFF
+	movss xmm3,xmm5
+    V2V2AABBSKIPMINMAXFF:
+
+    ;xmm2=tmin
+    ;xmm3=tmax
+
+   
+ 
+    jmp V2V2AABBSKIPCHECKIFINSIDE
+    V2V2AABBCHECKIFINSIDE:
 	jmp V2V2AABBENDZERO
     V2V2AABBSKIPCHECKIFINSIDE:
 
@@ -247,18 +299,12 @@ V2V2VSAABB2:
     bt arg3,1 ;check if return last collision is enabled
     jnc V2V2AABBNOLAST
         movss xmm0,xmm3
-        ucomiss xmm5,xmm3 ;check if LCy <= LCx
-        jbe V2V2AABBNOLAST
-            movss xmm0,xmm5
     V2V2AABBNOLAST:
 
     bt arg3,0 ;check if return first collision is enabled
     jnc V2V2AABBNOFIRST
         psllq xmm0,4 ;shift the float to make space for the new result
         movss xmm0,xmm2 
-        ucomiss xmm4,xmm2 
-        jbe V2V2AABBNOFIRST
-            movss xmm0,xmm4
     V2V2AABBNOFIRST:
 
     ;xmm0 [][][LCT][FCT]
@@ -902,6 +948,234 @@ global CIRCLE2VSCIRCLE2;char CIRCLE2VSCIRCLE2(void * Circle2D_A,void * Circle2D_
 	cmovbe rax,arg4
     _leave_
     ret
+
+global V2V2VSCIRCLE2
+;char V2V2VSCIRCLE2 (void * LINE2D, void * Circle, char SEGRETMODE, float * Time_Return)
+;***********************************************************
+;Given a 2D Line (Infinite line, ray or segment) and a 2D Circle,
+;This algorithm return if a collision ocurred and the collisions times
+;
+;    /**SEGMODE:
+;     4 bits flag:
+;	bit 0 set the notation mode (A+B) or (A->B)
+;	bit 1 and 2 set the line mode (infinite line, ray or line segment)
+;	bit 3 is a placeholder for now.**/	
+;
+;    /**RETMODE:
+;     *2 bits flag:
+;     0 = none contact
+;     1 = First contact
+;     2 = Last contact
+;     3 = Both contact **/
+;   
+;   /**SEGRETMODE:
+;   bits 0 ~ 3: SEGMENT MODE
+;   /**bits 4 ~ 5: RETURN MODE
+;***********************************************************
+    V2V2VSCIRCLE2:
+    _enter_
+%ifidn __OUTPUT_FORMAT__, win64 
+    sub rsp,16
+    movups [rsp],xmm6
+%endif
+
+
+    movups xmm0,[arg1]
+    xor rax,rax
+    movsd xmm2,[arg2]
+    movhlps xmm1,xmm0
+    movss xmm3,[arg2+4+4]
+
+    ;xmm0 = [0][0][Ay][Ax]
+    ;xmm1 = [0][0][By][Bx]
+    ;xmm2 = [0][0][Sy][Sx]
+    ;xmm3[0] = sr
+    
+    BT arg3,0 ; check if line is (A+B) or (A->B)
+    jnc V2V2VSSPHERESKIPLINESUM
+        subps xmm1,xmm0
+    V2V2VSSPHERESKIPLINESUM:
+   
+ 
+    movaps xmm6,xmm1
+    _V2NORM_imm xmm6,xmm4
+    pshufd xmm6,xmm6,0
+    divps xmm1,xmm6
+
+    shr arg3,1;arg3 = Line type
+    mov arg2,arg3
+    and arg2,3
+
+    mulss xmm3,xmm3
+
+    subps xmm0,xmm2
+    
+    _V2DOT_ xmm4,xmm0,xmm1,xmm5 
+    _V2DOT_ xmm5,xmm0,xmm0,xmm2 
+    subss xmm5,xmm3
+    pxor xmm1,xmm1
+    
+    
+    ;xmm0 = m
+    ;xmm1 = [0][0][0][0]
+    ;xmm4[0] = b = dot(m,d)
+    ;xmm5[0] = c = dot(m,m) - (sr*sr)
+    ;xmm6[0] = Direction norm
+    
+    ucomiss xmm5,xmm1
+    jbe V2V2VSSPHERESKIPPREMATURERETURN
+	ucomiss xmm4,xmm1
+	jbe V2V2VSSPHERESKIPPREMATURERETURN
+	    jmp V2V2VSSPHERERETURNZERO
+    V2V2VSSPHERESKIPPREMATURERETURN:
+
+    movss xmm3,xmm4
+    mulss xmm3,xmm3
+    subss xmm3,xmm5
+    ;xmm3[0] = discr = (b*b) - c
+
+    ucomiss xmm3,xmm1
+    jb V2V2VSSPHERERETURNZERO
+
+    sqrtss xmm3,xmm3
+    
+    pcmpeqw xmm2,xmm2
+    pslld xmm2,31
+    pxor xmm4,xmm2
+    movss xmm5,xmm4 
+
+    subss xmm4,xmm3
+    addss xmm5,xmm3
+    
+    ;xmm4[0] = t1 = -b - sqrt(discr)
+    ;xmm5[0] = t2 = -b + sqrt(discr)
+
+    ucomiss xmm4,xmm1
+    jb V2V2VSSPHERERETURNZERO
+   
+
+ 
+    ;check line type
+    cmp arg2,0
+    je V2V2VSSPHERERETURNONE
+
+    ucomiss xmm4,xmm1
+    jb V2V2VSSPHERERETURNZERO
+
+    cmp arg2,1
+    je V2V2VSSPHERERETURNONE
+
+    ;At this point, line is a segment...
+    
+
+    ucomiss xmm4,xmm6
+    ja V2V2VSSPHERERETURNZERO
+     
+
+    V2V2VSSPHERERETURNONE:
+    mov rax,1
+
+    ;Store times;
+    
+    divss xmm4,xmm6; <- To get the normalized time
+
+
+    shr arg3,3; arg3 store type
+    cmp arg4,0
+    je V2V2VSSPHERESKIPSTORE
+	cmp arg3,0
+	je  V2V2VSSPHERESKIPSTORE
+ 
+	xor arg2,arg2    
+
+	bt arg3,1
+	jnc V2V2VSSPHERESKIPSTORET2
+	    movss xmm0,xmm5
+	    pslldq xmm0,4
+	    inc arg2
+	V2V2VSSPHERESKIPSTORET2:
+
+	bt arg3,0
+	jnc V2V2VSSPHERESKIPSTORET1
+	    movss xmm0,xmm4
+	    inc arg2 
+	V2V2VSSPHERESKIPSTORET1:
+
+	cmp arg2,2
+	je V2V2VSSPHERESTORETWO
+	    movss [arg4],xmm0
+	    jmp V2V2VSSPHERESKIPSTORE	
+	V2V2VSSPHERESTORETWO:
+	   movsd [arg4],xmm0
+
+    V2V2VSSPHERESKIPSTORE:
+
+
+    V2V2VSSPHERERETURNZERO:
+
+%ifidn __OUTPUT_FORMAT__, win64 
+    movups xmm6,[rsp]
+    add rsp,16
+%endif
+    _leave_
+    ret
+
+global V2VSRANGEDLINE2;
+;char V2VSRANGEDLINE2(void * V2, void * Range2_Line, char LINEMode,float Range2_Angle);
+;**************************************************************************************
+;Given a 2D Point and a Field of View described by a Line and a aperture angle (radians),
+;This algorithm returns if the point is inside the range
+;**************************************************************************************
+    V2VSRANGEDLINE2:
+    _enter_
+%ifidn __OUTPUT_FORMAT__, win64
+	movss xmm0,xmm3
+%endif
+	sub rsp,8
+
+	pcmpeqw xmm4,xmm4
+	pslld xmm4,25
+	psrld xmm4,2	
+	
+	mulss xmm0,xmm4
+
+	movss [rsp],xmm0
+
+	pcmpeqw xmm5,xmm5
+	pslld xmm5,25
+	psrld xmm5,2	
+
+	movups xmm0,[arg2] 
+	xor rax,rax
+	movsd xmm2,[arg1]
+	movhlps xmm1,xmm0
+
+	BT arg3,0 ; check if line is (A+B) or (A->B)
+	jnc __V2VSRANGE____
+	    subps xmm1,xmm0
+	__V2VSRANGE____:
+
+	subps xmm2,xmm0
+
+	_V2DOT_ xmm0,xmm1,xmm2,xmm3
+   
+	fld dword [rsp]
+	fcos 
+	fstp dword [rsp]
+
+	movss xmm1,[rsp]
+
+	ucomiss xmm0,xmm5
+	ja V2VSRANGE2FAIL
+	    ucomiss xmm0,xmm1
+	    jb V2VSRANGE2FAIL
+		mov rax,1
+	V2VSRANGE2FAIL:
+
+	add rsp,8
+    _leave_
+    ret
+
 
 
 global V2VSPOLY2;  char V2VSPOLY2(void * Point2D,void * 2Dverticesbuffer,unsigned int vertices count);

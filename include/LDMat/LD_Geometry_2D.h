@@ -34,7 +34,13 @@ extern "C"
 #define SEGMENT2D V2V2
 #define LINE2D V2V2
 #define AABB2_B V2V2
-    
+   
+    struct RANGE2
+    {
+	struct {float x,y;}a,b;
+	float angle;
+    };
+ 
     /**AABB2MODE:
      *2 bits flag:
      *bit 0 set the notation mode (Center+Half_extent) or (A->B)
@@ -62,7 +68,7 @@ extern "C"
 #define AABB2BARYCENTER AABB2CENTROID
 #define AABB2CENTER AABB2CENTROID
 
-    char V2VSTRI2_EXT(float * Point2D, float * Triangle2D,unsigned int bytes_offset);
+    char V2VSTRI2_EXT(void * Point2D, void * Triangle2D,unsigned int bytes_offset);
 #define V2VSTRI2(Point2D_ptr, Triangle2D_ptr)   \
         V2VSTRI2_EXT(Point2D_ptr,Triangle2D_ptr,0)
 
@@ -79,9 +85,9 @@ extern "C"
         V2VSV2RADIUS(Point2D_ptr,CIRCLE2_ptr,((float*) CIRCLE2_ptr)+2 ) 
 
     char V2VSAABB2 (void * Point2D, void * AABB2, char AABB2MODE);
-#define V2VSAABB2_A(Point2Dptr,AABB2Aptr)\ V2VSAABB2(Point2Dptr,AABB2Aptr,0);
-#define V2VSAABB2_B_PD(Point2Dptr,AABB2Aptr)\ V2VSAABB2(Point2Dptr,AABB2Aptr,1);
-#define V2VSAABB2_B_MM(Point2Dptr,AABB2Aptr)\ V2VSAABB2(Point2Dptr,AABB2Aptr,3);
+#define V2VSAABB2_A(Point2Dptr,AABB2Aptr) V2VSAABB2(Point2Dptr,AABB2Aptr,0)
+#define V2VSAABB2_B_OD(Point2Dptr,AABB2Aptr) V2VSAABB2(Point2Dptr,AABB2Aptr,1)
+#define V2VSAABB2_B_MM(Point2Dptr,AABB2Aptr) V2VSAABB2(Point2Dptr,AABB2Aptr,3)
 
 /**
 SEGAABB2RETMODE:
@@ -105,9 +111,15 @@ SEGAABB2RETMODE:
     char CIRCLE2VSAABB2(void* CIRCLE2,void * AABB2, char AABB2MODE);
     char V2VSPOLY2(void * Point_2D, void * Vertices_Buffer_2D,unsigned int VerticesCount);
 
+    char V2VSRANGEDLINE2(void * Vector2,void * Range2_Line,char RANGEMODE,float Angle);
+#define V2VSRANGE2(Vector2_ptr,RANGE2_ptr,RANGEMODE)\
+    V2VSRANGEDLINE2(Vector2_ptr,RANGE2_ptr,RANGEMODE,(RANGE2_ptr)->angle)
+#define V2VSRANGE2_OD(Vector2_ptr,RANGE2_ptr) V2VSRANGE2(Vector2_ptr,RANGE2_ptr,0)
+#define V2VSRANGE2_AB(Vector2_ptr,RANGE2_ptr) V2VSRANGE2(Vector2_ptr,RANGE2_ptr,1)
+
+    char V2V2VSCIRCLE2(void * Line2D, void * Circle2D, char SEGRETMODE, void * Times_Return);
 
 /*
-    char V2V2VSCIRCLE2(void * Line2D, void * Circle2D, char SEGRETMODE, void * Times_Return);
     char POLY2SAT(void * VerticesBuffer_A, unsigned int vertices Count_A,
     void * VerticesBuffer_B, unsigned int vertices Count_B);
 */

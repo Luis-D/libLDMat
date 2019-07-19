@@ -40,7 +40,11 @@
 ;March   02, 2019: Many errors fixed.
 ;March	 14, 2019: Windows routines prologues fixed.
 ;April	 02, 2019: Quaternion Normalized LERP added.
+;April	 14, 2019: MADSS and SSMAD Operations added.
+;April   19, 2019: M4 and M2 Transpose and Quaternion SLERP functions added.
+;June	 03, 2019: Inversion instructions added. Absolute value instruction added.
 
+ 
 ;Notes:
 ;   - Matrices are ROW MAJOR.
 ;   - "LEGACY MACROS" are pieces of code from Boring-NASM-Code
@@ -144,6 +148,30 @@ section .data
 
 section .text
 
+;*** Simple float MATH ***;
+global SSABS; float ABSSS(float Operand);
+    SSABS:
+    _enter_
+    pcmpeqw xmm4,xmm4
+    psrld xmm4,1
+    pand xmm0,xmm4
+    _leave_
+    ret
+
+global SSCLAMP; float CLAMPSS(float Value,float Min, float Max)
+    SSCLAMP:
+    _enter_
+    ucomiss xmm0,xmm1
+    ja CLAMPSS_NO_MIN 
+	movss xmm0,xmm1
+    CLAMPSS_NO_MIN:
+    ucomiss xmm0,xmm2
+    jb CLAMPSS_END
+	movss xmm0,xmm2
+    CLAMPSS_END:
+    _leave_
+    ret
+
 
  ;***VECTOR 4 MATH***;
 
@@ -161,6 +189,7 @@ section .text
     %1 arg2f,arg1f
     movntps [arg1],arg2f
 %endmacro
+
 
 global V4ADD; void V4ADD( void * Result, void * A, void * B)
 ;************************************
@@ -236,6 +265,29 @@ global V4DIVSS; void V4DIVSS (void * result, void * Vector, float FLOAT)
     args_reset
 %endif
 
+global V4MADSS
+;void V4MADSS(void * Result, void * A, void * B, float C)
+;************************************
+;V4 Resul = (A + (B*C))
+;************************************
+    V4MADSS:
+%ifidn __OUTPUT_FORMAT__, win64 
+    %define arg1f XMM3
+%endif
+    _enter_
+    
+    movups xmm5,[arg3]
+    pshufd arg1f,arg1f,0
+    movups xmm4,[arg2]
+    mulps xmm5,arg1f
+    addps xmm4,xmm5
+    movups [arg1],xmm4
+
+%ifidn __OUTPUT_FORMAT__, win64 
+    args_reset
+%endif
+    _leave_
+    ret
 
     ;*** VECTOR 4 ALGEBRA***/
 
@@ -385,6 +437,19 @@ global V4DISTANCE; float V4NORM(void * A, void * B)
     _leave_
     ret
 
+global V4INV; void V4INV(void * Result, void * Operand)
+;*************************************
+;V4 Result = -Operand
+;************************************
+    V4INV:
+    _enter_
+	movups xmm1,[arg2]
+	pcmpeqw xmm0,xmm0
+	pslld xmm0,31
+	pxor xmm1,xmm0
+	movups [arg1],xmm1
+    _leave_
+    ret
 
    ;***VECTOR 2 MATH***;
 
@@ -478,32 +543,72 @@ global V2DIVSS;
     args_reset
 %endif
 
-    ;***VECTOR 2 ALGEBRA***;
+global V2MADSS
+;void V2MADSS(void * Result, void * A, void * B, float C)
+;************************************
+;V2 Result = (A + (B*C))
+;************************************
+V2MADSS:
+%ifidn __OUTPUT_FORMAT__, win64 
+%define arg1f XMM3
+%endif
+_enter_
+
+movsd xmm5,[arg3]
+pshufd arg1f,arg1f,0
+movsd xmm4,[arg2]
+mulps xmm5,arg1f
+addps xmm4,xmm5
+movsd [arg1],xmm4
+
+%ifidn __OUTPUT_FORMAT__, win64 
+args_reset
+%endif
+_leave_
+ret
+
+global V2INV; void V2INV(void * Result, void * Operand)
+;*************************************
+;V2 Result = -Operand
+;************************************
+    V2INV:
+    _enter_
+	movsd xmm1,[arg2]
+	pcmpeqw xmm0,xmm0
+	pslld xmm0,31
+	pxor xmm1,xmm0
+	movsd [arg1],xmm1
+    _leave_
+    ret
+
+
+
+;***VECTOR 2 ALGEBRA***;
 
 %macro DotProductXMMV2 4
 ;%1 and %2 are registers to proccess
 ;%3 is the result ;Result stored in the first 32-bits
 ;%4 is a temporal register
-	movsd %3, %1
-	mulps  %3, %2
-	movshdup %4,%3
-	addss    %3,%4
+movsd %3, %1
+mulps  %3, %2
+movshdup %4,%3
+addss    %3,%4
 %endmacro
 %macro _V2DOT_ 4
 ;%1 is the result ;Result stored in the first 32-bits
 ;%2 and %3 are registers to proccess
 ;%4 is a temporal register
-    DotProductXMMV2 %2, %3, %1, %4
+DotProductXMMV2 %2, %3, %1, %4
 %endmacro
 global V2DOT; float V2DOT(void * A, void * B)
-    V2DOT:
-        _enter_
-        movlps xmm1,[arg1]
-        pxor xmm0,xmm0
-        movlps xmm2,[arg2]
-        _V2DOT_ xmm0,xmm1,xmm2,xmm3
-        _leave_
-        ret
+V2DOT:
+_enter_
+movlps xmm1,[arg1]
+pxor xmm0,xmm0
+movlps xmm2,[arg2]
+_V2DOT_ xmm0,xmm1,xmm2,xmm3
+_leave_
+ret
 
 %macro CROSSPRODUCTV2 4
 ;*** LEGACY MACRO ***;
@@ -511,11 +616,11 @@ global V2DOT; float V2DOT(void * A, void * B)
 ;%3 Register where to store the result
 ;%4 Temporal register
 ;v = %1; w = %2
-    pshufd %4,%2,00000001b
-    movsd %3,%1
-    mulps %3,%4
-    movshdup %4, %3
-    subss %3,%4
+pshufd %4,%2,00000001b
+movsd %3,%1
+mulps %3,%4
+movshdup %4, %3
+subss %3,%4
 %endmacro
 %macro _V2CROSS_ 4
 ;%1 Destiny Operand
@@ -523,341 +628,377 @@ global V2DOT; float V2DOT(void * A, void * B)
 ;%3 Second Operand
 ;%4 Temporal Operand
 ;v = %2; w = %3
-    CROSSPRODUCTV2 %2,%3,%1,%4
+CROSSPRODUCTV2 %2,%3,%1,%4
 %endmacro
-global V2CROSS; void V2CROSS(void * Result, void * A, void * B)
-    V2CROSS:
-        _enter_
-        movsd xmm2,[arg2]
-        movsd xmm3,[arg3]
-        _V2CROSS_ xmm1,xmm2,xmm3,xmm0
-        movsd [arg1],xmm1
-        _leave_
-        ret
+global V2CROSS; float V2CROSS(void * A, void * B)
+V2CROSS:
+_enter_
+movsd xmm2,[arg2]
+movsd xmm3,[arg3]
+_V2CROSS_ xmm1,xmm2,xmm3,xmm0
+movss xmm0,xmm1
+_leave_
+ret
+
+global V2TRANSPOSE; void V2TRANSPOSE(void * Result, void * Vector)
+;***************************************
+;Result = { Vector.Y , Vector.X } 
+;***************************************
+V2TRANSPOSE:
+_enter_
+movsd xmm0,[arg2]
+pshufd xmm0,xmm0,1
+movsd [arg1],xmm0
+_leave_
+ret
 
 %macro _V2NORMALIZE_ 4
 ;%1 = Destination Operand
 ;%2 = Source Operand
 ;%3 = Temporal Operand (Trasheable)
 ;%4 = Temporal Operand (Trasheable)
-    movaps %4,%2
-    movaps %1,%2
-    mulps %4,%4
-    movshdup %3,%4
-    addss    %4,%3
-    sqrtss   %4,%4
-    movsldup   %4,%4,
-    divps    %1,%4
-%endmacro
-global V2NORMALIZE
-    V2NORMALIZE:
-        _enter_
-        movlps xmm1,[arg2] 
-        _V2NORMALIZE_ xmm0,xmm1,xmm2,xmm3
-        movsd [arg1],xmm0
-        _leave_
-        ret
+movaps %4,%2
+movaps %1,%2
+mulps %4,%4
+movshdup %3,%4
+addss    %4,%3
+sqrtss   %4,%4
+movsldup   %4,%4,
+	   divps    %1,%4
+	   %endmacro
+	   global V2NORMALIZE
+	   V2NORMALIZE:
+	   _enter_
+	   movlps xmm1,[arg2] 
+	   _V2NORMALIZE_ xmm0,xmm1,xmm2,xmm3
+	   movsd [arg1],xmm0
+	   _leave_
+	   ret
 
-%macro ____V2Lerp____ 4
-;%1 Is the First  Operand Vector (A)
-;%2 Is the Second Operand Vector (B)
-;%3 Is the Factor Operand Vector (t) (Previously pshufd' by itself with 0)
-;%4 Is the Destiny Vector        (C)
-;All operands must be different
-    movsd %4,%2
-    subps %4,%1  ;B-A
-    mulps %4,%3  ;(B-A)*t
-    addps %4,%1  ;C = A+((B-A)*t)
-%endmacro
-%macro _V2LERP_ 4
-;%1 Is the Destiny Vector        (C)
-;%2 Is the First  Operand Vector (A)
-;%3 Is the Second Operand Vector (B)
-;%4 Is the Factor Operand Vector (t) (Previously pshufd' by itself with 0)
-;All operands must be different
-    ____V2Lerp____ %2,%3,%1,%4
-%endmacro
+	   %macro ____V2Lerp____ 4
+	   ;%1 Is the First  Operand Vector (A)
+	   ;%2 Is the Second Operand Vector (B)
+	   ;%3 Is the Factor Operand Vector (t) (Previously pshufd' by itself with 0)
+	   ;%4 Is the Destiny Vector        (C)
+	   ;All operands must be different
+	   movsd %4,%2
+	   subps %4,%1  ;B-A
+	   mulps %4,%3  ;(B-A)*t
+	   addps %4,%1  ;C = A+((B-A)*t)
+	   %endmacro
+	   %macro _V2LERP_ 4
+	   ;%1 Is the Destiny Vector        (C)
+	   ;%2 Is the First  Operand Vector (A)
+	   ;%3 Is the Second Operand Vector (B)
+	   ;%4 Is the Factor Operand Vector (t) (Previously pshufd' by itself with 0)
+	   ;All operands must be different
+	   ____V2Lerp____ %2,%3,%1,%4
+	   %endmacro
 
-global V2LERP; void V2LERP(void * Result, void * vec2_A, void * vec2_B, float factor)
-;********************************************************
-;Given two 2D vectors and a scalar factor,
-;this algorithm does a Linear Interpolation
-;The result, a 2D vector, is stored in QR
-;********************************************************
-V2LERP:
+	   global V2LERP; void V2LERP(void * Result, void * vec2_A, void * vec2_B, float factor)
+	   ;********************************************************
+	   ;Given two 2D vectors and a scalar factor,
+	   ;this algorithm does a Linear Interpolation
+	   ;The result, a 2D vector, is stored in QR
+	   ;********************************************************
+	   V2LERP:
+	   %ifidn __OUTPUT_FORMAT__, win64 
+	   %define arg1f XMM3 ;The fourth argument is a float, Factor.
+	   %define argrf XMM0 ;The result will be stored here.
+	   %elifidn __OUTPUT_FORMAT__, elf64
+	   %define argrf XMM3 ;The result will be stored here.
+	   %endif
+	   _enter_
+	   movsd XMM3,[arg2]
+	   pshufd arg1f,arg1f,0
+	   movsd XMM1,[arg3]
+	   ____V2Lerp____ XMM3,XMM1,arg1f,argrf
+	   movsd [arg1],argrf
+	   _leave_
+	   ret 
+	   %ifidn __OUTPUT_FORMAT__, win64 
+	   args_reset
+	   %endif
+
+	   %macro _V2NORM_imm  2
+	   ;%1 Destiny/Source Operand (float)
+	   ;%2 Temporal Operand (2D vector of floats)
+	   mulps %1,%1
+	   movshdup %2,%1
+	   addss   %1,%2
+	   sqrtss  %1,%1
+	   %endmacro
+	   global V2NORM; float V2NORM(void * A)
+	   ;************************************************************
+	   ;Given a 2D vector, this algorithm returns its length (norm).
+	   ;************************************************************
+	   V2NORM:
+	   _enter_
+	   movsd xmm0,[arg1]
+	   _V2NORM_imm xmm0,xmm1
+	   _leave_
+	   ret
+
+	   global V2DISTANCE; float V2DISTANCE(void * A, void * B)
+	   ;************************************************************
+	   ;Given two 2D points, this algorithm returns the distance.
+	   ;************************************************************
+	   V2DISTANCE:
+	   _enter_
+	   movsd xmm1,[arg1]
+	   movsd xmm0,[arg2]
+	   subps xmm0,xmm1
+	   _V2NORM_imm xmm0,xmm1
+	   _leave_
+	   ret
+
+
+	   global V2ANGLE; (RADIANS) float V2ANGLE(void * Vector)
+	   ;******************************************************************
+	   ;Given a 2D Vector, this algorithm returns its angle (in radians).
+	   ;******************************************************************
+	   V2ANGLE:
+	   _enter_
+	   sub rsp, 8
+	   fld dword [arg1+4]
+	   fld dword [arg1]
+	   fpatan
+	   fstp dword [rsp]
+	   movss xmm0, [rsp] 
+	   add rsp, 8
+	   _leave_
+	   ret
+
+	   global V2V2ANGLE; (RADIANS) float V2V2ANGLE(void * A, void * B)
+	   ;******************************************************************
+	   ;Given a line segment formed by the two 2D points A and B.
+	   ;This algorimth calculates the angle of the line segment.
+	   ;******************************************************************
+	   V2V2ANGLE:
+	   _enter_
+	   sub rsp, 8
+	   fld dword[arg2+4];B.y
+	   fld dword[arg1+4];A.y
+	   fsubp 
+	   fld dword[arg2];B.x
+	   fld dword[arg1];A.x
+	   fsubp
+	   fpatan
+	   fmulp
+	   fstp dword[rsp] 
+	   movss xmm0, [rsp] 
+	   add rsp, 8
+	   _leave_
+	   ret
+
+	   global ANGLEROTV2; (RADIANS) void ANGLEROTV2(void * Destiny, void * Source, float Radians)
+	   ;******************************************************************
+	   ;Given a 2D vector (Source) and an angle in Radians,
+	   ;this algorithm transforms the 2D vector by the angle.
+	   ;The result is stored in Destiny.
+	   ;******************************************************************
+	   %ifidn __OUTPUT_FORMAT__, win64 
+	   %define arg1f XMM2
+	   %define arg2f xmm0
+	   %define arg3f xmm1
+	   %define arg4f xmm3
+	   %endif
+	   ANGLEROTV2:
+	   _enter_   
+	   sub rsp,8
+
+	   movss [rsp],arg1f
+
+	   pxor xmm4,xmm4
+	   pxor arg4f,arg4f
+
+	   fld dword [rsp]
+	   pxor xmm5,xmm5
+	   pcmpeqd xmm4,xmm4
+	   ;xmm4[0] = [11111111111111111111111111111111]
+
+	   fld st0
+	   fcos 
+	   fstp dword [rsp]
+	   psllq xmm4,31
+	   ;xmm4[0] = [10000000000000000000000000000000]
+	   fsin
+	   fstp dword [rsp+4]
+	   movss xmm5,xmm4
+
+	   movsd arg1f,[rsp]
+	   ;arg1f [][][sin][cos]
+	   pshufd arg2f,arg1f,11_10_00_01b
+	   ;arg2f [][][cos][sin]
+	   movsd arg3f,[arg2]
+	   movsldup xmm4,arg3f
+	   ;xmm4 [][][x][x]
+	   movshdup arg4f,arg3f
+	   ;arg4f [][][y][y]
+	   pxor arg4f,xmm5
+	   ;arg4f [][][y][-y]
+
+	   ;xmm4 [][] [x][x]
+	   ;arg1f [][][sin][cos]
+
+	   ;arg4f [][][y][-y]
+	   ;arg2f [][][cos][sin]
+
+	   mulps arg1f,xmm4
+	   mulps arg2f,arg4f
+	   addps arg1f,arg2f
+
+	   movsd [arg1],arg1f
+
+	   add rsp,8
+	   _leave_ 
+	   ret
+	   %ifidn __OUTPUT_FORMAT__, win64 
+	   args_reset
+	   %endif
+
+
+
+	   ;***VECTOR 3 MATH***;
+	   ;(It is slow as it consist of Scalar and VECTOR 2 Math)
+
+	   %macro _V3MATH_ARITHMETIC_ROUTINE 1
+	   ;%1 = operation
+	   _loadvec3_ xmm0,arg2,xmm2 
+	   _loadvec3_ xmm1,arg3,xmm2 
+	   %1 xmm0,xmm1
+	   _storevec3_ arg1,xmm0,xmm2
+	   %endmacro
+
+
+	   %macro _loadvec3_ 3
+	   ;%1 = Destiny Operand
+	   ;%2 = Source Memory
+	   ;%3 = temporal Operand (Trasheable)
+	   movlps %1,[%2]
+	   movss  %3,[%2+8]
+	   movlhps %1,%3
+	   %endmacro
+	   %define _LOADVEC3_ _loadvec3_
+
+	   %macro _storevec3_ 3
+	   ;%1 = Destiny Memory 
+	   ;%2 = Source Operand
+	   ;%3 = temporal Operand (Trasheable)
+	   movhlps %3,%2
+	   movsd [%1],%2
+	   movss [%1+8],%3
+	   %endmacro
+	   %define _STOREVEC3_ _storevec3_
+
+	   %macro _V3MATH_SCALAR_ROUTINE 1
+	   ;%1 = operation
+	   _loadvec3_ arg2f,arg2,arg3f
+	   shufps arg1f,arg1f,0
+	   %1 arg2f,arg1f
+	   _storevec3_ arg1,arg2f,arg3f
+	   %endmacro
+
+	   global V3ADD; void V3ADD(, void * Result, void * A, void * B)
+	   ;************************************
+	   ; V3 Result = (A.x + B.x , X.y + B.y, A.z + B.z)
+	   ;************************************
+	   V3ADD:
+	   _enter_
+	   _V3MATH_ARITHMETIC_ROUTINE addps
+	   _leave_
+	   ret
+
+	   global V3SUB; void V3SUB(void * Result,void * A, void * B)
+	   ;************************************
+	   ; V3 Result = (A.x - B.x , X.y - B.y, A.z - B.z)
+	   ;************************************
+	   V3SUB:
+	   _enter_
+	   _V3MATH_ARITHMETIC_ROUTINE subps
+	   _leave_
+	   ret
+
+	   global V3MUL; void V3MUL(void * Result, void * A, void * B)
+	   ;************************************
+	   ; V4 Result = (A.x * B.x , X.y * B.y, A.z * B.z)
+	   ;************************************
+	   V3MUL:
+	   _enter_
+	   _V3MATH_ARITHMETIC_ROUTINE mulps
+	   _leave_
+	   ret 
+
+	   global V3DIV; void V3DIV(void * Result, void * A, void * B)
+	   ;************************************
+	   ; V3 Result = (A.x / B.x , X.y / B.y, A.z / B.z)
+	   ;************************************
+	   V3DIV:
+	   _enter_
+	   _V3MATH_ARITHMETIC_ROUTINE divps
+	   _leave_
+	   ret     
+
+	   global V3MULSS; void V3MULSS (void * result, void * Vector, float FLOAT )
+	   ;************************************
+	   ; V3 Result = (A.x * FLOAT , X.y * FLOAT, A.z * FLOAT)
+	   ;************************************
+	   %ifidn __OUTPUT_FORMAT__, win64 
+	   %define arg1f XMM2
+	   %define arg2f XMM3
+	   %define arg3f XMM4
+	   %endif
+	   V3MULSS:
+	   _enter_
+	   _V3MATH_SCALAR_ROUTINE mulps
+	   _leave_
+	   ret
+	   %ifidn __OUTPUT_FORMAT__, win64 
+	   args_reset
+	   %endif
+
+	   global V3DIVSS; void V3DIVSS (void * result, void * Vector, float FLOAT)
+	   ;************************************
+	   ; V2 Result = (A.x / FLOAT , X.y / FLOAT, A.z / FLOAT)
+	   ;************************************
+	   %ifidn __OUTPUT_FORMAT__, win64 
+	   %define arg1f XMM2
+	   %define arg2f XMM3
+	   %define arg3f XMM4
+	   %endif
+	   V3DIVSS:
+	   _enter_
+	   _V3MATH_SCALAR_ROUTINE divps
+	   _leave_
+	   ret
+	   %ifidn __OUTPUT_FORMAT__, win64 
+	   args_reset
+	   %endif
+
+	   global V3MADSS
+	   ;void V3MADSS(void * Result, void * A, void * B, float C)
+	   ;************************************
+	   ;V2 Resul = (A + (B*C))
+	   ;************************************
+	   V3MADSS:
 %ifidn __OUTPUT_FORMAT__, win64 
-    %define arg1f XMM3 ;The fourth argument is a float, Factor.
-    %define argrf XMM0 ;The result will be stored here.
-%elifidn __OUTPUT_FORMAT__, elf64
-    %define argrf XMM3 ;The result will be stored here.
+    %define arg1f XMM3
+    %define arg4f XMM0
 %endif
     _enter_
-    movsd XMM3,[arg2]
+    
+    _loadvec3_ xmm5,arg3,arg4f
     pshufd arg1f,arg1f,0
-    movsd XMM1,[arg3]
-    ____V2Lerp____ XMM3,XMM1,arg1f,argrf
-    movsd [arg1],argrf
+    _loadvec3_ xmm4,arg2,arg4f
+    mulps xmm5,arg1f
+    addps xmm4,xmm5
+    _storevec3_ arg1,xmm4,arg4f 
+
+%ifidn __OUTPUT_FORMAT__, win64 
+    args_reset
+%endif
     _leave_
-    ret 
-%ifidn __OUTPUT_FORMAT__, win64 
-    args_reset
-%endif
-
-%macro _V2NORM_imm  2
-;%1 Destiny/Source Operand (float)
-;%2 Temporal Operand (2D vector of floats)
-    mulps %1,%1
-    movshdup %2,%1
-    addss   %1,%2
-    sqrtss  %1,%1
-%endmacro
-global V2NORM; float V2NORM(void * A)
-;************************************************************
-;Given a 2D vector, this algorithm returns its length (norm).
-;************************************************************
-    V2NORM:
-        _enter_
-        movsd xmm0,[arg1]
-        _V2NORM_imm xmm0,xmm1
-        _leave_
-        ret
-
-global V2DISTANCE; float V2NORM(void * A, void * B)
-;************************************************************
-;Given two 2D points, this algorithm returns the distance.
-;************************************************************
-    V2DISTANCE:
-        _enter_
-        movsd xmm1,[arg1]
-        movsd xmm0,[arg2]
-        subps xmm0,xmm1
-        _V2NORM_imm xmm0,xmm1
-        _leave_
-        ret
-
-
-global V2ANGLE; (RADIANS) float V2ANGLE(void * Vector)
-;******************************************************************
-;Given a 2D Vector, this algorithm returns its angle (in radians).
-;******************************************************************
-    V2ANGLE:
-        _enter_
-        sub rsp, 8
-        fld dword [arg1+4]
-        fld dword [arg1]
-        fpatan
-        fstp dword [rsp]
-        movss xmm0, [rsp] 
-        add rsp, 8
-        _leave_
-        ret
-
-global V2V2ANGLE; (RADIANS) float V2V2ANGLE(void * A, void * B)
-;******************************************************************
-;Given a line segment formed by the two 2D points A and B.
-;This algorimth calculates the angle of the line segment.
-;******************************************************************
-    V2V2ANGLE:
-        _enter_
-        sub rsp, 8
-        fld dword[arg2+4];B.y
-        fld dword[arg1+4];A.y
-        fsubp 
-        fld dword[arg2];B.x
-        fld dword[arg1];A.x
-        fsubp
-        fpatan
-        fmulp
-        fstp dword[rsp] 
-        movss xmm0, [rsp] 
-        add rsp, 8
-        _leave_
-        ret
-
-global ANGLEROTV2; (RADIANS) void ANGLEROTV2(void * Destiny, void * Source, float Radians)
-;******************************************************************
-;Given a 2D vector (Source) and an angle in Radians,
-;this algorithm transforms the 2D vector by the angle.
-;The result is stored in Destiny.
-;******************************************************************
-%ifidn __OUTPUT_FORMAT__, win64 
-    %define arg1f XMM2
-    %define arg2f xmm0
-    %define arg3f xmm1
-    %define arg4f xmm3
-%endif
-    ANGLEROTV2:
-        _enter_   
-        sub rsp,8
-
-            movss [rsp],arg1f
-
-            pxor xmm4,xmm4
-            pxor arg4f,arg4f
-            
-        fld dword [rsp]
-            pxor xmm5,xmm5
-        pcmpeqd xmm4,xmm4
-            ;xmm4[0] = [11111111111111111111111111111111]
-            
-        fld st0
-        fcos 
-        fstp dword [rsp]
-        psllq xmm4,31
-                ;xmm4[0] = [10000000000000000000000000000000]
-        fsin
-        fstp dword [rsp+4]
-            movss xmm5,xmm4
-
-        movsd arg1f,[rsp]
-        ;arg1f [][][sin][cos]
-        pshufd arg2f,arg1f,11_10_00_01b
-        ;arg2f [][][cos][sin]
-        movsd arg3f,[arg2]
-        movsldup xmm4,arg3f
-        ;xmm4 [][][x][x]
-        movshdup arg4f,arg3f
-        ;arg4f [][][y][y]
-        pxor arg4f,xmm5
-        ;arg4f [][][y][-y]
-
-        ;xmm4 [][] [x][x]
-        ;arg1f [][][sin][cos]
-
-        ;arg4f [][][y][-y]
-        ;arg2f [][][cos][sin]
-
-        mulps arg1f,xmm4
-        mulps arg2f,arg4f
-        addps arg1f,arg2f
-
-        movsd [arg1],arg1f
-        
-        add rsp,8
-        _leave_ 
-        ret
-%ifidn __OUTPUT_FORMAT__, win64 
-    args_reset
-%endif
-
-
-
-      ;***VECTOR 3 MATH***;
-      ;(It is slow as it consist of Scalar and VECTOR 2 Math)
-
-%macro _V3MATH_ARITHMETIC_ROUTINE 1
-;%1 = operation
-    _loadvec3_ xmm0,arg2,xmm2 
-    _loadvec3_ xmm1,arg3,xmm2 
-    %1 xmm0,xmm1
-    _storevec3_ arg1,xmm0,xmm2
-%endmacro
-
-
-%macro _loadvec3_ 3
-;%1 = Destiny Operand
-;%2 = Source Memory
-;%3 = temporal Operand (Trasheable)
-    movlps %1,[%2]
-    movss  %3,[%2+8]
-    movlhps %1,%3
-%endmacro
-%define _LOADVEC3_ _loadvec3_
-
-%macro _storevec3_ 3
-;%1 = Destiny Memory 
-;%2 = Source Operand
-;%3 = temporal Operand (Trasheable)
-    movhlps %3,%2
-    movsd [%1],%2
-    movss [%1+8],%3
-%endmacro
-%define _STOREVEC3_ _storevec3_
-
-%macro _V3MATH_SCALAR_ROUTINE 1
-;%1 = operation
-    _loadvec3_ arg2f,arg2,arg3f
-    shufps arg1f,arg1f,0
-    %1 arg2f,arg1f
-    _storevec3_ arg1,arg2f,arg3f
-%endmacro
-
-global V3ADD; void V3ADD(, void * Result, void * A, void * B)
-;************************************
-; V3 Result = (A.x + B.x , X.y + B.y, A.z + B.z)
-;************************************
-    V3ADD:
-        _enter_
-            _V3MATH_ARITHMETIC_ROUTINE addps
-        _leave_
-        ret
-
-global V3SUB; void V3SUB(void * Result,void * A, void * B)
-;************************************
-; V3 Result = (A.x - B.x , X.y - B.y, A.z - B.z)
-;************************************
-    V3SUB:
-        _enter_
-            _V3MATH_ARITHMETIC_ROUTINE subps
-        _leave_
-        ret
-
-global V3MUL; void V3MUL(void * Result, void * A, void * B)
-;************************************
-; V4 Result = (A.x * B.x , X.y * B.y, A.z * B.z)
-;************************************
-    V3MUL:
-        _enter_
-            _V3MATH_ARITHMETIC_ROUTINE mulps
-        _leave_
-        ret 
-
-global V3DIV; void V3DIV(void * Result, void * A, void * B)
-;************************************
-; V3 Result = (A.x / B.x , X.y / B.y, A.z / B.z)
-;************************************
-    V3DIV:
-        _enter_
-            _V3MATH_ARITHMETIC_ROUTINE divps
-        _leave_
-        ret     
-
-global V3MULSS; void V3MULSS (void * result, void * Vector, float FLOAT )
-;************************************
-; V3 Result = (A.x * FLOAT , X.y * FLOAT, A.z * FLOAT)
-;************************************
-%ifidn __OUTPUT_FORMAT__, win64 
-    %define arg1f XMM2
-    %define arg2f XMM3
-    %define arg3f XMM4
-%endif
-    V3MULSS:
-        _enter_
-        _V3MATH_SCALAR_ROUTINE mulps
-        _leave_
-        ret
-%ifidn __OUTPUT_FORMAT__, win64 
-    args_reset
-%endif
-
-global V3DIVSS; void V3DIVSS (void * result, void * Vector, float FLOAT)
-;************************************
-; V2 Result = (A.x / FLOAT , X.y / FLOAT, A.z / FLOAT)
-;************************************
-%ifidn __OUTPUT_FORMAT__, win64 
-    %define arg1f XMM2
-    %define arg2f XMM3
-    %define arg3f XMM4
-%endif
-    V3DIVSS:
-        _enter_
-        _V3MATH_SCALAR_ROUTINE divps
-        _leave_
-        ret
-%ifidn __OUTPUT_FORMAT__, win64 
-    args_reset
-%endif
-
+    ret
 
 %macro DotProductXMMV3 4
 ;**LEGACY MACRO**
@@ -1038,6 +1179,34 @@ global V3DISTANCE
         _leave_
         ret
 
+global V3INV; void V3INV(void * Result, void * Operand)
+;*************************************
+;V3 Result = -Operand
+;************************************
+    V3INV:
+    _enter_
+	_loadvec3_ xmm1,arg2,xmm2
+	pcmpeqw xmm0,xmm0
+	pslld xmm0,31
+	pxor xmm1,xmm0
+	_storevec3_ arg1,xmm1,xmm2
+    _leave_
+    ret
+
+args_reset
+
+global SSMAD; float SSMAD(float A,float B, float C);
+;***********************
+; It returns A + (B*C)
+;***********************
+    SSMAD:
+    _enter_
+	mulss arg2f,arg3f
+	addss arg1f,arg2f
+    _leave_
+    ret
+
+
 %macro _SSLERP_ 4
 ;%1 Is the Destiny    
 ;%2 Is the First  float     
@@ -1062,7 +1231,18 @@ global SSLERP; float SSLERP(float A, float B,float Factor)
     ret
 
 
-%macro _DSLERP_ 4
+global SDMAD; float SDMAD(float A,float B, float C);
+;***********************
+; It returns A + (B*C)
+;***********************
+    SDMAD:
+    _enter_
+	mulsd arg2f,arg3f
+	addsd arg1f,arg2f
+    _leave_
+    ret
+
+%macro _SDLERP_ 4
 ;%1 Is the Destiny    
 ;%2 Is the First  double     
 ;%3 Is the Second double      
@@ -1072,15 +1252,15 @@ global SSLERP; float SSLERP(float A, float B,float Factor)
     mulsd %1,%4  ;(B-A)*t
     addsd %1,%2  ;C = A+((B-A)*t)
 %endmacro
-global DSLERP; double  DSLERP(double A, double B,double Factor)
+global SDLERP; double  SDLERP(double A, double B,double Factor)
 ;*************************************************************************************
 ;Given two double precision doubles (both scalars, A and B) and a double scalar factor,
 ;this algorithm does a Linear Interpolation
 ;The result is stored in Result
 ;*************************************************************************************
-    DSLERP:
+    SDLERP:
     _enter_
-        _DSLERP_ arg4f,arg1f,arg2f,arg3f
+        _SDLERP_ arg4f,arg1f,arg2f,arg3f
         movsd arg1f,arg4f
     _leave_
     ret
@@ -1457,16 +1637,16 @@ UQUATINV:
 	psrldq xmm0,4
 	;xmm0 [0][sb][sb][sb]
 	pxor xmm1,xmm0
-	movntps [arg1],xmm1
+	movups [arg1],xmm1
     _leave_
     ret
 
 
 global UQUATNLERP; void UQUATNLERP(void * Result, void * UQuaternionA,void * UQuaternionB,float Factor)
-;********************************************************************************
-;Given two quaternions, this algorithm returns the Normalized interpolation by a
+;***************************************************************************************
+;Given two quaternions, this algorithm returns the Normalized Linear Interpolation by a
 ;given factor.
-;********************************************************************************
+;***************************************************************************************
 UQUATNLERP:
     _enter_
 %ifidn __OUTPUT_FORMAT__, win64
@@ -1481,6 +1661,23 @@ UQUATNLERP:
     _leave_
     ret
 
+global UQUATSLERP; void UQUATSLERP(void * Result, void * A, void * B, float Factor)
+;***************************************************************************************
+;Given two quaternions, this algorithm returns the Spherical Linear Interpolation by a
+;given factor.
+;***************************************************************************************
+    UQUATSLERP:
+%ifidn __OUTPUT_FORMAT__, win64
+	movaps xmm0,xmm3
+%endif
+    _enter_
+	movups xmm4,[arg2]
+	pshufd xmm0,xmm0,0
+	movups xmm5,[arg3]
+
+
+    _leave_
+    ret
 
 
 global UQUATDIFF; void UQUATDIFF(void * Result, void * A, void * B);
@@ -1626,7 +1823,14 @@ global M2INV; void M2INV(void * Destiny, void * Matrix)
 	_leave_
 	ret
 
-
+global M2TRANSPOSE; void M2TRANSPOSE(void * Destiny, void * Origin)
+    M2TRANSPOSE:
+    _enter_
+	movups xmm0,[arg2]
+	pshufd xmm0,xmm0, 11011000b
+	movups [arg1],xmm0
+    _leave_
+    ret
 
 
 
@@ -2388,6 +2592,22 @@ args_reset
     _leave_
     ret
 
+global M4TRANSPOSE; void M4TRANSPOSE(void * Destiny, void * Origin)
+    M4TRANSPOSE:
+    _enter_
+    movups xmm0,[arg2]
+    movups xmm1,[arg2+16]
+    movups xmm2,[arg2+16+16]
+    movups xmm3,[arg2+16+16+16]
+
+    TRANS44
+
+    movups [arg1],xmm0
+    movups [arg1+16],xmm2
+    movups [arg1+16+16],xmm4
+    movups [arg1+16+16+16],xmm5
+    _leave_
+    ret
 
 global M4ORTHO;
 ;    void M4ORTHO
