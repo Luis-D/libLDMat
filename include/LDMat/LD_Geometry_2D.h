@@ -81,7 +81,7 @@ extern "C"
     char V2V2VSV2V2 (float * Seg_A, float * Seg_B,char SEGMODE, float * Time_Return);
 
     char V2VSV2RADIUS(void * Point2D, void * CircleCenter, float Radius);
-#define V2VSV2CIRCLE2(Point2D_ptr,CIRCLE2_ptr) \
+#define V2VSCIRCLE2(Point2D_ptr,CIRCLE2_ptr) \
         V2VSV2RADIUS(Point2D_ptr,CIRCLE2_ptr,((float*) CIRCLE2_ptr)+2 ) 
 
     char V2VSAABB2 (void * Point2D, void * AABB2, char AABB2MODE);

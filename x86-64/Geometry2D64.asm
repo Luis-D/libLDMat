@@ -95,15 +95,16 @@ V2VSAABB2:
     ;xmm2: [][][By][Bx]
 
     BT arg3, 0 ;check if Center+Half_Extents or Classic AABB2
-    jc V2VSAABB2ISCLASSIC
+    js V2VSAABB2ISCLASSIC
         ;if bit 0 is clear, then it's Center+Half_Extent
         movaps xmm3,xmm1
         subps xmm1,xmm2
         addps xmm2,xmm3
+	jmp V2VSAABB2PREPROCCESSEND
     V2VSAABB2ISCLASSIC:
         ;if bit 0 is set, then:
         BT arg3,1; check if Pivot+Direction or Min->Max
-        jc V2VSAABB2PREPROCCESSEND
+        js V2VSAABB2PREPROCCESSEND
             ;if bit 1 is clear, then it's Pivot+Direction
             addps xmm2,xmm1
 
