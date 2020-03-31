@@ -368,6 +368,36 @@ global TRI3CLOSESTV3; TRI3CLOSESTV3(void * Destiny_V3, void * TRI3,void * V3);
     _leave_
     ret
 
+global SPHEREVSTRI3; char SPHEREVSTRI3(void * Sphere, void * TRI3)
+    SPHEREVSTRI3:
+    _enter_
+    sub rsp,(8*2)
+    push arg1
+	mov arg3,arg1
+	mov arg1,rsp
+	;arg1 = Destiny
+	;arg2 = TRI3
+	;arg3 = Sphere (Sphere center)
+	call TRI3CLOSESTV3
+    pop arg1
+	xor rax,rax
+	movups xmm0,[arg1]
+	mov arg4,1
+	movhlps xmm1,xmm0
+	movups xmm2,[rsp]
+	mulss xmm1,xmm1
+	subps xmm2,xmm0
+	mulps xmm2,xmm2
+	movhlps xmm3,xmm2
+	movshdup xmm4,xmm2
+	addps xmm4,xmm2
+	addss xmm4,xmm3	
+	ucomiss xmm4,xmm1
+	cmovbe rax,arg4
+    add rsp,(8*2)
+    _leave_
+    ret
+
 global TRI3CENTROID; void TRI3DCENTROID(void * Destiny, void * Source)
 ;************************
 ;Given a triangle Triangle described by and array of 3 3D points (3 floats per point)
@@ -1275,7 +1305,289 @@ global V3DISTANCEPLANE
     _leave_
     ret
 
+global SPHEREVSSPHERE; char SPHEREVSSPHERE(void * A, void * B);
+;*************************************************************************
+;Return 1 if the sum of the radii is less than or equal than the distance
+;between the centers
+;*************************************************************************
+    SPHEREVSSPHERE:
+    _enter_
+	xor rax,rax
+	movsd xmm0,[arg1]
+	movss xmm4,[arg1+8]
+	movlhps xmm0,xmm4
+	movups xmm2,[arg2]
+	mov arg4,1	
+	movhlps xmm1,xmm0
+	movshdup xmm1,xmm1
+	movhlps xmm3,xmm2
+	movshdup xmm3,xmm2
+	;xmm0.xyz = A Position
+	;xmm1.x = A Radius
+	;xmm2.xyz = B Position
+	;xmm3.x = B Radius
+	subps xmm2,xmm0
+	addss xmm1,xmm3
+	mulps xmm2,xmm2
+	movhlps xmm3,xmm2
+	;xmm2.x = X*X
+	;xmm2.y = Y*Y
+	;xmm3.x = Z*Z
+	movshdup xmm0,xmm2
+	;xmm0.x = Y*Y
+	addss xmm2,xmm0
+	addss xmm2,xmm3
+	sqrtss xmm2,xmm2
+	ucomiss xmm2,xmm1
+	cmovbe rax,arg4
+    _leave_
+    ret
 
+
+global V3VSSPHERE; char V3VSSPHERE(void * Point3D, void * Sphere)
+    V3VSSPHERE:
+    _enter_
+	movsd xmm0,[arg1]
+	mov arg4,1
+	xor rax,rax
+	movss xmm4,[arg1+(2*4)]
+	movlhps xmm0,xmm4
+	movups xmm2,[arg2]
+	movhlps xmm1,xmm2
+	movshdup xmm1,xmm1
+	;xmm0.xyz = Point
+	;xmm2.xyz = Center
+	;xmm1.x = Radius
+	subps xmm2,xmm0
+	mulps xmm2,xmm2
+	movhlps xmm3,xmm2
+	;xmm2.x = X*X
+	;xmm2.y = Y*Y
+	;xmm3.x = Z*Z
+	movshdup xmm0,xmm2
+	;xmm0.x = Y*Y
+	addss xmm2,xmm0
+	addss xmm2,xmm3
+	sqrtss xmm2,xmm2
+	ucomiss xmm2,xmm1
+	cmovbe rax,arg4
+    _leave_
+    ret
+
+global V3VSV3
+    V3VSV3:
+    _enter_
+	movsd xmm0,[arg1]
+	mov arg4,1
+	xor rax,rax
+	movss xmm3,[arg1+(2*4)]
+	movlhps xmm0,xmm3
+	movsd xmm1,[arg2]
+	pxor xmm4,xmm4
+	movss xmm2,[arg2+(2*4)]
+	movlhps xmm1,xmm2
+	;xmm0 = Point A
+	;xmm1 = Point B
+	;xmm4 = 0
+
+	CMPNEQPS xmm1, xmm2
+	;if (xmm1==xmm2) then xmm1.xyzw = 0
+
+	;OR all the members
+	movhlps xmm3,xmm1
+	por xmm3,xmm1
+	movshdup xmm1,xmm3
+	por xmm1,xmm3
+
+	;Now check if they're still all 0
+	ucomiss xmm1,xmm4
+	cmove rax,arg4
+    _leave_
+    ret
+
+global V3VSAABB3;char V2VSAABB2(void * Point3D,void * AABB3,char AABB3MODE);  
+;****************************************************************
+;Given a 3D point and a AABB3,
+;this algoritm returns if the 2D point lies in the AABB2.
+;AABB3MODE:
+;     *2 bits flag:
+;     *bit 0 set the notation mode (Center+Half_extent) or (A->B)
+;     *bit 1 set the subnotation mode:
+;        if (A->B) (bit 0 set): (Pivot+Direction) or (Min->Max) 
+;****************************************************************
+    V3VSAABB3:
+    _enter_
+
+    movsd xmm0,[arg1]
+    movss xmm3,[arg1+8]
+    movlhps xmm0,xmm3
+
+    xor arg4,arg4; set to 0 
+    xor rax,rax; clear return
+    not arg4; set arg4 to -INF (full set) for later comparition
+    ;arg4 = 0xFFFFFFFFFFFFFFFF
+
+    movups xmm1,[arg2]
+    movups xmm2,[arg2+((2*4))]
+    pslldq xmm1,4
+    psrldq xmm1,4
+    psrldq xmm2,4
+
+    ;xmm0 = Point3D
+    ;xmm1 = AABB Vertex 1
+    ;xmm2 = AABB Vertex 2
+
+    BT arg3, 0 ;check if Center+Half_Extents or Classic AABB3
+    js V3VSAABB3ISCLASSIC
+        ;if bit 0 is clear, then it's Center+Half_Extent
+        movaps xmm3,xmm1
+        subps xmm1,xmm2
+        addps xmm2,xmm3
+	jmp V3VSAABB3PREPROCCESSEND
+    V3VSAABB3ISCLASSIC:
+        ;if bit 0 is set, then:
+        BT arg3,1; check if Pivot+Direction or Min->Max
+        js V3VSAABB3PREPROCCESSEND
+            ;if bit 1 is clear, then it's Pivot+Direction
+            addps xmm2,xmm1
+    V3VSAABB3PREPROCCESSEND:
+
+    ;xmm0: [][Pz][Py][Px]
+    ;xmm1: [][Min.z][Min.y][Min.x]
+    ;xmm2: [][Max.z][Max.y][Max.x]
+
+    ;check if xmm1 <= xmm0
+    cmpps xmm1,xmm0,2
+    movhlps xmm3,xmm1
+    pand xmm1,xmm3
+
+    ;check if xmm0 <= xmm2
+    cmpps xmm0,xmm2,2
+    movhlps xmm4,xmm0
+    pand xmm0,xmm4
+
+    movq arg1,xmm1
+    movq arg2,xmm0
+
+    cmp arg1,arg4
+    jne V3VSAABB3END
+    cmp arg3,arg4
+    jne V3VSAABB3END
+    mov ax,1
+    V3VSAABB3END:
+
+    _leave_
+    ret
+
+global V3VSPLANE; char V3VSPLANE(void * V3, void * Plane);
+;******************************************************************************
+;Given a 3D Point (A) and a Plane consisting in a 3D point (P) and a normal (N),
+;this algoritm returns 1 if (((A-P).N) == 0). NOTE: (.) <- dot product
+;******************************************************************************
+    V3VSPLANE:
+    _enter_
+    movups xmm1,[arg2]
+    xor rax,rax
+    pxor xmm4,xmm4
+    movsd xmm0,[arg1]
+    pslldq xmm1,4
+    movss xmm3,[arg1+8]
+    psrldq xmm1,4
+    movups xmm2,[arg2+((2*4))]
+    mov arg4,1
+    movlhps xmm0,xmm3
+    psrldq xmm2,4
+
+    ;xmm0 = V3 (A)
+    ;xmm1 = Point in Plane (P)
+    ;xmm2 = Plane Normal (N)
+
+    subps xmm0,xmm1
+    mulps xmm0,xmm2
+    movhlps xmm3,xmm0
+    movshdup xmm2,xmm0
+    addps xmm0,xmm4
+    addss xmm0,xmm2
+    
+    ucomiss xmm0,xmm4
+    cmove rax,arg4
+    _leave_
+    ret
+
+
+global AABB3VSAABB3 ;char AABB3VSAABB3(void * A, void * B,char AABB3MODE);
+;************************************************************************;
+;Given two 3D AABB, this algoritm returns 1 if they intersects
+;AABB3MODE:
+;     *2 bits flag:
+;     *bit 0 set the notation mode (Center+Half_extent) or (A->B)
+;     *bit 1 set the subnotation mode:
+;        if (A->B) (bit 0 set): (Pivot+Direction) or (Min->Max)
+;AABB3_A Flag: 0 ~ 3
+;AABB3_B Flag: 4 ~ 7
+;************************************************************************;
+    AABB3VSAABB3:
+    _enter_
+
+    movups xmm0,[arg1]
+	pcmpeqw xmm5,xmm5
+	psrld xmm5,1
+    movups xmm1,[arg1+((2*4))]
+    pslldq xmm0,4
+    psrldq xmm0,4
+    psrldq xmm1,4
+
+    movups xmm2,[arg2]
+	pcmpeqw xmm4,xmm4
+        psllq xmm4,55
+        psrlq xmm4,2
+    movups xmm3,[arg2+((2*4))]
+    pslldq xmm2,4
+    psrldq xmm2,4
+    psrldq xmm3,4
+
+    mov arg4,1
+
+    BT arg3,0
+    jc AABB3VSAABB3_ACH
+	    BT arg3,1
+	    js AABB3VSAABB3_APD
+		subps xmm1,xmm0
+	    AABB3VSAABB3_APD:
+	    mulps xmm1,xmm4
+	    addps xmm0,xmm1
+    AABB3VSAABB3_ACH:
+
+    BT arg3,4
+    jc AABB3VSAABB3_BCH
+	    BT arg3,5
+	    js AABB3VSAABB3_BPD
+		subps xmm3,xmm2
+	    AABB3VSAABB3_BPD:
+	    mulps xmm3,xmm4
+	    addps xmm2,xmm3
+    AABB3VSAABB3_BCH:
+
+    subps xmm0,xmm2 ;A.center - B.center
+    addps xmm1,xmm3 ;A.HL + B.HL
+    pand xmm0,xmm5;Abs(A.center-B.center)
+    
+    cmpss xmm4,xmm4,0
+
+    CMPLEPS xmm1,xmm0; A.r <= A.c
+    ;if this is true, then return 0
+    
+    movhlps xmm2,xmm1
+    movshdup xmm0,xmm1
+    por xmm0,xmm1
+    por xmm0,xmm2
+    
+    ;if(xmm0 != FF){return 1;}
+    ucomiss xmm0,xmm4
+    cmovne rax,arg4
+
+    _leave_
+    ret
 
 %unmacro DotProductXMMV3 4
 %unmacro _V3DOT_ 4

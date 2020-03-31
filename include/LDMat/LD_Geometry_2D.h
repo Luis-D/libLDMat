@@ -52,6 +52,9 @@ extern "C"
      4 bits flag:
 	bit 0 set the notation mode (A+B) or (A->B)
 	bit 1 and 2 set the line mode (infinite line, ray or line segment)
+		= 0 = infinite line
+		= 1 = Ray
+		= else = line segment
 	bit 3 is a placeholder for now.**/	
 
     /**RETMODE:
@@ -78,7 +81,10 @@ extern "C"
 
 
     char V2VSV2V2 (void * Point2D, void * LineSegment, char SEGMODE);
-    char V2V2VSV2V2 (float * Seg_A, float * Seg_B,char SEGMODE, float * Time_Return);
+
+	//LOW 4 bits is SEGMODE A, HIGH 4 bits is SEGMODE B
+	//SEGMODE is SEGMODEB.SEGMODEA
+    char V2V2VSV2V2 (void * Seg_A, void * Seg_B,char SEGMODE, float * Time_Return);
 
     char V2VSV2RADIUS(void * Point2D, void * CircleCenter, float Radius);
 #define V2VSCIRCLE2(Point2D_ptr,CIRCLE2_ptr) \

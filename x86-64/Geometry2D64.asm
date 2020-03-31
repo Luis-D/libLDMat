@@ -605,15 +605,15 @@ global V2V2VSV2V2
 ;char V2V2VSV2V2 (float * Seg_A, float * Seg_B,char SEGMODE, float * Time_Return);
 ;*************************************
 ; Given two V2V2, this algorithm calculates if intersect.
-; low 4 bits in SEGMODE is SEGMODE A
-; high 4 bits in SEGMODE is SEGMODE B
+; low 4 bits in SEGMODE is SEGMODE B
+; high 4 bits in SEGMODE is SEGMODE A
 ;*************************************
 V2V2VSV2V2:
     _enter_
     
     mov rax,arg3
-    and arg3,0xF
-    shr rax,4
+    and rax,0xF
+    shr arg3,4
 
     ;arg3 = SEGMODE A
     ;rax = SEGMODE B
@@ -621,7 +621,7 @@ V2V2VSV2V2:
     movsd xmm0,[arg2]	;xmm0=Q (Aa)
     movsd xmm2,[arg1]	;xmm2=P (Ba)
     add arg2,8    
-    movsd xmm1,[arg2]	;xmm1= (Ab)
+    movsd xmm1,[arg2]	;xmm1= (Ab)z
     bt rax,0
     jnc S2DVSS2D_SKIPSMA ;if bit 0, clear xmm1= S
     subps xmm1,xmm0     ;xmm1=S = (Q+S)-Q (Ab)
@@ -809,7 +809,7 @@ AABB2CENTROID:
 
 global AABB2VSAABB2 ;char AABB2VSAABB2(void* AABB2_A,void * AABB2_B, char AABB2MODE);
 ;************************************************************************;
-;Given two 2D AABB, this algoritm return if they intersects
+;Given two 2D AABB, this algoritm returns if they intersects
 ;AABB2MODE:
 ;     *2 bits flag:
 ;     *bit 0 set the notation mode (Center+Half_extent) or (A->B)
@@ -834,9 +834,9 @@ global AABB2VSAABB2 ;char AABB2VSAABB2(void* AABB2_A,void * AABB2_B, char AABB2M
 
 	movhlps xmm1,xmm0
 	BT arg3,0
-	jnc AABB2VSAABB2_ACH
+	jc AABB2VSAABB2_ACH
 		BT arg3,1
-		jnc AABB2VSAABB2_APD
+		js AABB2VSAABB2_APD
 		    subps xmm1,xmm0
 		AABB2VSAABB2_APD:
 		mulps xmm1,xmm4
@@ -847,26 +847,36 @@ global AABB2VSAABB2 ;char AABB2VSAABB2(void* AABB2_A,void * AABB2_B, char AABB2M
 
 	movhlps xmm3,xmm2
 	BT arg3,4
-	jnc AABB2VSAABB2_BCH
+	jc AABB2VSAABB2_BCH
 		BT arg3,5
-		jnc AABB2VSAABB2_BPD
+		js AABB2VSAABB2_BPD
 		    subps xmm3,xmm2
 		AABB2VSAABB2_BPD:
 		mulps xmm3,xmm4
 		addps xmm2,xmm3
 	AABB2VSAABB2_BCH:
 
-	subps xmm0,xmm2	
-	addps xmm1,xmm3
-	pand xmm0,xmm5
+	subps xmm0,xmm2	;A.center - B.center
+	addps xmm1,xmm3 ;A.HL + B.HL
+	pand xmm0,xmm5;Abs(A.center-B.center)
 	
 	cmpss xmm4,xmm4,0
 
-	cmpps xmm0,xmm1,2
-	movshdup xmm1,xmm0
-	pand xmm0,xmm1
+	CMPLEPS xmm1,xmm0; A.r <= A.c
+	;if this is true, then return 0
+
+	movshdup xmm0,xmm1
+
+	;xmm1 = (A.c > A.r)[0]	
+	;xmm0 = (A.c > A.r)[1]
+
+	por xmm0,xmm1
+	;xmm0 = xmm1 or xmm0
+
+	;if(xmm0 != FF){return 1;}
 	ucomiss xmm0,xmm4
-	cmove rax,arg4
+	cmovne rax,arg4
+	
 
     _leave_
     ret
@@ -1193,7 +1203,7 @@ global V2VSPOLY2;  char V2VSPOLY2(void * Point2D,void * 2Dverticesbuffer,unsigne
 	mov r10,arg2
 
 	movss xmm3,[arg1]
-	xor r11,r11
+	xor r11,r11; Winding counter
 	
 	
 	mov arg4,arg2
@@ -1201,30 +1211,45 @@ global V2VSPOLY2;  char V2VSPOLY2(void * Point2D,void * 2Dverticesbuffer,unsigne
 	V2VSPOLY2LOOP:
 	    dec arg3
 	    add arg4,(4*2)
-	    test arg3,arg3
-	    cmovz arg4,r10
+	    test arg3,arg3 ; replace with test if possible
+	    cmovz arg4,r10; replace with cmovz if test
 
-	    movss xmm0,xmm3
-	    movss xmm1,[arg2]
-	    movss xmm2,[arg4]
+
+	    movaps xmm0,xmm3
+	    movsd xmm1,[arg2]
+	    movsd xmm2,[arg4]
 	    movshdup xmm4,xmm1
 	    movshdup xmm5,xmm2
 
-	    subps xmm2,xmm1
-	    subps xmm0,xmm1
-	    pshufd xmm1,xmm0,11100001b
-	    mulps xmm1,xmm2
+		;xmm0 = POINT
+		;xmm1 = A.x, A.y
+		;xmm4 = A.y
+		;xmm2 = B.x, B.y
+		;xmm5 = B.y
+		;-- B = A+1, the next vertex--
+
+		; --IsLeft()--
+	    subps xmm1,xmm0
+	    subps xmm2,xmm0
+	    pshufd xmm2,xmm2,11100001b
+		mulps xmm1,xmm2
 	    movshdup xmm2,xmm1
 	    subss xmm1,xmm2	   
- 
+		;-------------- 
+		;xmm1 = IsLeft() 
+
 	    pxor xmm2,xmm2
 
 	    movshdup xmm0,xmm3
+		;xmm0 = POINT.y
+		;xmm2 = 0
+		;xmm4 = A.y
+		;xmm5 = B.y
 
 	    
-	    ucomiss xmm0,xmm4
+	    ucomiss xmm4,xmm0
 	    ja V2VSPOLY2LOOPNOTESTNEEDED
-		ucomiss xmm5,xmm4
+		ucomiss xmm5,xmm0
 		jna V2VSPOLY2LOOPNOTESTEND
 		    ucomiss xmm1,xmm2
 		    jna V2VSPOLY2LOOPNOTESTEND
@@ -1232,7 +1257,7 @@ global V2VSPOLY2;  char V2VSPOLY2(void * Point2D,void * 2Dverticesbuffer,unsigne
 
 	    jmp V2VSPOLY2LOOPNOTESTEND
 	    V2VSPOLY2LOOPNOTESTNEEDED:
-		ucomiss xmm5,xmm4
+		ucomiss xmm5,xmm0
 		ja V2VSPOLY2LOOPNOTESTEND
 		    ucomiss xmm1,xmm2
 		    jnb V2VSPOLY2LOOPNOTESTEND

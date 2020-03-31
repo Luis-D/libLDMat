@@ -2,13 +2,15 @@
 The fast, low level and non-bloated (*maybe*) math library.
 
 ###### This library is conformant with:
+ *  **x86-32**:
+    * CDECL
  *  **x86-64**:
     * System V AMD64 ABI (*nix systems)
     * Microsoft x64 calling convention (Windows) 
  *  **ARMv7-A**:
     * Procedure Call Standard for the ARM Architecture
  
-### Tutorial:
+### Algebra tutorial:
 
 #### Data types:
   The next datatypes are the ones currently handled by the library:
@@ -34,6 +36,7 @@ The fast, low level and non-bloated (*maybe*) math library.
 * **DOT**: Dot Product.
 * **CROSS**: Cross Product.
 * **LERP**: Linear Interpolation.
+* **NLERP**: Normalized Linear Interpolation.
 * **NORM**: Norm.
 * **NORMALIZE**: Normalization.
 * **DISTANCE**: Distance between two operands.
@@ -61,14 +64,14 @@ The fast, low level and non-bloated (*maybe*) math library.
    * By **SS**: *MUL, DIV*.
 * On **QUAT**: *MUL, NORMALIZE (TOUQUAT), TOM4*.
    * On **V3**: *ROT* (**QUATROTV3**).
-* On **UQUAT**: *The same as QUAT's*, *INV. DIFF*.
+* On **UQUAT**: *The same as QUAT's*, *INV, DIFF, NLERP*.
 * On **M2**: *MAKE, IDENTITY, MUL, DET, INV, ADD, SUB*.
    * On **V2**: *MUL* (**M2MULV2**).
    * By **SS**: *MUL, DIV*
 * On **M4**: *MAKE, IDENTITY, MUL, INV*.
    * On **V4**: *MUL*
    * On **V3**: *MUL*
-   * Special operations: **AM4MULV3**
+   * Special operations: **AM4MULV3, PERSPECTIVE, ORTHO, LOOKAT**.
 * On **EULER**: *TOQUAT*.
 * On **ANGLE**: *RADTODEG, DEGTORAD, TOM2*
    * On **V2**: *ROT* (**ANGLEROTV2**).
@@ -122,3 +125,31 @@ int main()
 }
 
 ```
+
+### Geometry tutorial:
+
+#### 2D Data types:
+* **CIRCLE2**: *Vec3*. Circle represented by a 2D point and a Radius.
+* **AABB2**: *Vec4*. Generic Axis Aligned Bounding Box represented by two 2D points.
+* **TRI2**: *3 Vec2*. A triangle represented by an array of three 2D points.
+* **V2V2**: *Vec4*. Generic composition of two 2D points, a line.
+* **RANGE2**: *Vec3*. A cone made by two 2D points (a line) and a angle (radians).
+
+#### 3D Data types:
+* **SPHERE**: *Vec4*. Sphere represented by a 3D point and a Radius.
+* **AABB3**: *2 Vec3*. Generic Axis Aligned Bounding Box represented by two 3D points.
+* **TRI3**: *3 Vec3*. A triangle represented by an array of three 3D points.
+* **V3V3**: *2 Vec3*. Generic composition of two 3D points, a line.
+* **RANGE3**: *2 Vec3*. A cone made by two 3D points (a line) and a angle (radians).
+* **PLANE**: *2 Vec3*. A plane represented by a point and a normal.
+
+#### Common operations (there are a lot of variants):
+* **VS**: Interception of two objects.
+* **CENTROID**: Centroid of an Object.
+* **CLOSES**: Closest object to another object.
+* **NORMAL**: Calculation of normal vector.
+* **DISTANCE**: Distance between two objects.
+
+#### Modes:
+Due to the many ways to represent these data types, the algoritms use flags to set the proper representation.
+(Refer to the header).

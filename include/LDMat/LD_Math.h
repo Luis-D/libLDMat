@@ -1,3 +1,5 @@
+//TODO: ADD "Virtual" Functions, maybe made in C
+
 #ifndef _LIBLDMATH_MATH_H_
 #define _LIBLDMATH_MATH_H_
 

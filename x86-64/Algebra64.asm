@@ -5,23 +5,23 @@
 ; System V AMD64 ABI Convention (*nix)
 ; Function parameters are passed this way:
 ; Interger values: RDI, RSI, RDX, RCX, R8, R9
-; Float Point values: XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7
+; Floating Point values: XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7
 ; Extra arguments are pushed on the stack starting from the most left argument
 ; Function return value is returned this way:
 ; Integer value: RAX:RDX 
-; Float Point value: XMM0:XMM1
+; Floating point value: XMM0:XMM1
 ; RAX, R10 and R11 are volatile
 
 ; Microsoft x64 calling convention (Windows)
 ; Function parameters are passed this way:
 ; Interger values: RCX, RDX, R8, R9
-; Float Point values: XMM0, XMM1, XMM2, XMM3 
+; Floating point values: XMM0, XMM1, XMM2, XMM3 
 ; Both kind of arguments are counted together
 ; e.g. if the second argument is a float, it will be in arg2f, if Interger, then RDX
 ; Extra arguments are pushed on the stack 
 ; Function return value is returned this way:
 ; Integer value: RAX
-; Float Point value: XMM0
+; Floating point value: XMM0
 ; XMM4, XMM5, RAX, R10 and R11 are volatile
 
 ; SSE, SSE2, SSE3, FPU
@@ -763,6 +763,7 @@ movsldup   %4,%4,
 	   fld dword [arg1+4]
 	   fld dword [arg1]
 	   fpatan
+	   fchs
 	   fstp dword [rsp]
 	   movss xmm0, [rsp] 
 	   add rsp, 8
@@ -777,14 +778,14 @@ movsldup   %4,%4,
 	   V2V2ANGLE:
 	   _enter_
 	   sub rsp, 8
-	   fld dword[arg2+4];B.y
 	   fld dword[arg1+4];A.y
+	   fld dword[arg2+4];B.y
 	   fsubp 
-	   fld dword[arg2];B.x
 	   fld dword[arg1];A.x
+	   fld dword[arg2];B.x
 	   fsubp
 	   fpatan
-	   fmulp
+	   fchs
 	   fstp dword[rsp] 
 	   movss xmm0, [rsp] 
 	   add rsp, 8
@@ -1726,6 +1727,34 @@ global M2MAKE; void M2MAKE(void * Destiny, float Scale)
 %endif
 	pshufd arg1f,arg1f,00_11_11_00b
 	movups [arg1],arg1f
+        _leave_
+        ret
+%ifidn __OUTPUT_FORMAT__, win64 
+    args_reset
+%endif
+
+global ANGLETOM2; void ANGLETOM2(void * Destiny, float Radians);
+	ANGLETOM2:
+	_enter_
+%ifidn __OUTPUT_FORMAT__, win64 
+    movaps arg1f,arg2f
+%endif
+		sub rsp,8
+
+		movss [rsp],arg1f
+		
+		fld dword [rsp]
+		fld st0
+		fcos 
+		fst dword [arg1]
+		fstp dword [arg1+4+4+4]
+		fsin 
+		fst dword [arg1+4]
+		fchs
+		fstp dword [arg1+8]
+	
+
+		add rsp,8
         _leave_
         ret
 %ifidn __OUTPUT_FORMAT__, win64 
