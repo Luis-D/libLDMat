@@ -1189,34 +1189,33 @@ global V2VSRANGEDLINE2;
 
 
 
-global V2VSPOLY2;  char V2VSPOLY2(void * Point2D,void * 2Dverticesbuffer,unsigned int vertices count);
+global V2VSPOLY2_EXT;  char V2VSPOLY2(void * Point2D,void * 2Dverticesbuffer,unsigned int vertices count,unsigned int Offset);
 ;********************
+;It uses an Offset for interleaved data. To skip a Z component, for example.
 ;Implementation of: http://geomalgorithms.com/a03-_inclusion.html#wn_PnPoly()
 ;********************
-    V2VSPOLY2:
+    V2VSPOLY2_EXT:
     _enter_
 	push r10
+	mov rax,arg4
 	push r11
-	xor rax,rax
-	cmp arg3,3
-	jb V2VSPOLY2END
 	mov r10,arg2
 
 	movss xmm3,[arg1]
 	xor r11,r11; Winding counter
-	
 	
 	mov arg4,arg2
 
 	V2VSPOLY2LOOP:
 	    dec arg3
 	    add arg4,(4*2)
-	    test arg3,arg3 ; replace with test if possible
-	    cmovz arg4,r10; replace with cmovz if test
+	    add arg4,rax
+	    test arg3,arg3
+	    cmovz arg4,r10
 
 
-	    movaps xmm0,xmm3
 	    movsd xmm1,[arg2]
+	    movaps xmm0,xmm3
 	    movsd xmm2,[arg4]
 	    movshdup xmm4,xmm1
 	    movshdup xmm5,xmm2
@@ -1265,6 +1264,7 @@ global V2VSPOLY2;  char V2VSPOLY2(void * Point2D,void * 2Dverticesbuffer,unsigne
 	   
 	    V2VSPOLY2LOOPNOTESTEND:
 
+	xor rax,rax
 
 	    mov arg2,arg4
 	test arg3,arg3

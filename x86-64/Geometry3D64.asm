@@ -39,24 +39,41 @@ args_reset ;<--Sets arguments definitions to normal, as it's definitions can cha
 	addss    %1,%3
     sqrtss   %1,%1
 %endmacro
-%macro NORMALIZEVEC3MACRO 4 
+
+%macro NORMALIZEVEC3MACRO_W_RECIPROCAL 5 
+;This uses one step of Newton-Rahpson
 ;%1 Register with the vector about to normalize
-;%2, %3 y %4 temporal registers
+;%2, %3, %4 and %5 temporal registers
     movaps %3,%1
     ;%3 [][z][y][x]
+	    pcmpeqw %5,%5
     mulps  %3,%1
     ;%3 [][z*z][y*y][x*x]	
 	movhlps %2,%3
 	;%2 [][][][z*z]
-	pshufd %4,%3,1
+	    pslld %5,24
+	    ;%5 [1.5][1.5][1.5][1.5]
+	movshdup %4,%3
 	;%4 [][][][y*y]
-	addss %3,%4
 	addss %3,%2
+	    psrld %5,2
+	    pcmpeqw %2,%2
+	addss %3,%4; x
 	;%3 [][][][(x*x)+(y*y)+(z*z)]
-	sqrtss %3,%3
-	;%3 [][][][sqrt((x*x)+(y*y)+(z*z))]
-    pshufd %3,%3,0
-    divps %1,%3
+	    pslld %2,26
+	rsqrtss %4,%3;nr
+	;%3 [][][][rsqrt((x*x)+(y*y)+(z*z))]    
+	    psrld %2,2
+	    ;%2 [0.5][0.5][0.5][0.5]
+	    addss %5,%5
+    mulss %3,%4;xnr
+    mulss %3,%4;muls
+    mulss %2,%4;half_nr
+    subss %5,%3;
+    mulss %2,%5
+    pshufd %2,%2,0
+    mulps %1,%2
+
 %endmacro 
 %macro DotProductXMMV3 4
 ;**LEGACY MACRO**
@@ -401,7 +418,7 @@ global SPHEREVSTRI3; char SPHEREVSTRI3(void * Sphere, void * TRI3)
 global TRI3CENTROID; void TRI3DCENTROID(void * Destiny, void * Source)
 ;************************
 ;Given a triangle Triangle described by and array of 3 3D points (3 floats per point)
-;this algorithm calculates its barycenter and returns and array of a 3D point in Result
+;this algorithm calculates its barycenter and returns a 3D point in Result
 ;************************
 TRI3CENTROID:
     _enter_
@@ -439,48 +456,73 @@ TRI3CENTROID:
     ret
 
 global TRI3NORMAL
-; void TRI3NORMAL(void * Vec3_Destiny, void * Triangle, char TriangleMode);
+; void TRI3NORMAL(void * Destiny, void * Triangle, char TriangleModeAndOPMode);
+; or   TRI3TOTRI3N ;
 ;*******************************************************************************
 ;Given a 3D triangle (a vector of three vectors of three floats -3D vertices-),
 ;depending on its mode (CCW or CW), this algoritm will return its normal
 ; TRIMODE (TriangleMode):
-; 1 bit mask: CCW or CW
+; 3 bit mask: 
+;   0 (LSB): CCW or CW
+;   1	   : Return only Normal if clear, return entire triangle plus normal if set
+;   2	   : Normalize normal if clear 
 ;*******************************************************************************
     TRI3NORMAL:
     _enter_
     movups xmm1,[arg2]
-    pcmpeqw xmm0,xmm0
-    pslld xmm0,31
-    movups xmm2,[arg2+4+4+4]  
-    pslldq xmm1,4
-    psrldq xmm1,4
     movups xmm3,[arg2+4+4+4 +4+4]
-    pslldq xmm2,4
-    psrldq xmm2,4
-    psrldq xmm3,4
+
+    movaps xmm4,xmm1 ;<- Copy for pipelining
 
     ;xmm0 = SC
     ;xmm1 = V1 (A)
+    ;xmm2 = (It is copied later for pipelining purposes)
+    ;xmm3 = V3 (C) <- it lacks a psrldq because of possible memcpy
+
+    bt arg3,1
+    jnc TRI3NORMAL_SKIP_STORE_First_PART
+	movups [arg1],xmm1;Copy A
+    TRI3NORMAL_SKIP_STORE_First_PART:
+    
+    movups xmm2,[arg2+4+4+4] 
     ;xmm2 = V2 (B)
-    ;xmm3 = V3 (C)
+ 
+    movaps xmm0,xmm3 ;<- backup B.z and C
+    psrldq xmm3,4 ;<- the psrldq V3 needed
+    
+    subps xmm3,xmm4
+    subps xmm4,xmm2
 
-    subps xmm2,xmm1
-    subps xmm3,xmm1
+    jnc TRI3NORMAL_SKIP_STORE_Second_PART
+	movups [arg1+4+4+4],xmm2; Copy B
+    TRI3NORMAL_SKIP_STORE_Second_PART:
 
-    _V3CROSS_ xmm1,xmm2,xmm3,xmm4,xmm5
+    _V3CROSS_ xmm1,xmm3,xmm4,xmm2,xmm5
+
+    jnc TRI3NORMAL_SKIP_STORE_Third_PART
+	movups [arg1+4+4+4 +4+4],xmm0; Copy B.z again and C
+	add arg1,(+4+4+4 +4+4+4 +4+4+4)
+    TRI3NORMAL_SKIP_STORE_Third_PART:
+
+    bt arg3,2
+    jc TRI3NORMAL_SKIP_NormalizeNormal
+	NORMALIZEVEC3MACRO_W_RECIPROCAL xmm1,xmm3,xmm4,xmm5,xmm2
+    TRI3NORMAL_SKIP_NormalizeNormal:
 
     bt arg3,0
     jnc TRI3NORMAL_SKIP_INVERTNORMAL
+	pcmpeqw xmm0,xmm0
+	pslld xmm0,31
 	pxor xmm1,xmm0
     TRI3NORMAL_SKIP_INVERTNORMAL:
-
-    
 
     movsd [arg1],xmm1
     movhlps xmm1,xmm1
     movss [arg1+4+4],xmm1
     _leave_
     ret
+
+
 
 global V3VSTRI3
 ;char V3VSTRI3(void * V3, void *TRI3D)
@@ -1591,7 +1633,7 @@ global AABB3VSAABB3 ;char AABB3VSAABB3(void * A, void * B,char AABB3MODE);
 
 %unmacro DotProductXMMV3 4
 %unmacro _V3DOT_ 4
-%unmacro NORMALIZEVEC3MACRO 4 
+%unmacro NORMALIZEVEC3MACRO_W_RECIPROCAL 5
 %unmacro _V4NORM_ 3
 %unmacro _V3CROSS_ 5
 

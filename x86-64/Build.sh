@@ -9,11 +9,14 @@ mkdir BUILD/GCC
 mkdir BUILD/MINGW
 
 echo "ELF64"
+
+gcc -c -O2 M4.s -o M4.o
+
 nasm -f ELF64 Algebra64.asm -o BUILD/tmp/Al64.o
 nasm -f ELF64 Geometry2D64.asm -o BUILD/tmp/G2D64.o
 nasm -f ELF64 Geometry3D64.asm -o BUILD/tmp/G3D64.o
 
-ar rcs libLDM.a BUILD/tmp/Al64.o BUILD/tmp/G2D64.o BUILD/tmp/G3D64.o
+ar rcs libLDM.a BUILD/tmp/Al64.o BUILD/tmp/G2D64.o BUILD/tmp/G3D64.o M4.o
 mv libLDM.a BUILD/GCC/libLDMat.a
 
 gcc -shared -fPIC -o libLDM.so BUILD/tmp/Al64.o BUILD/tmp/G2D64.o BUILD/tmp/G3D64.o
@@ -37,4 +40,4 @@ BUILD/tmp/G3D64.obj
 cp BUILD/libLDMat.dll BUILD/MINGW/libLDMat.dll
 
 
-x86_64-w64-mingw32-gcc-7.3-posix Test.c BUILD/MINGW/libLDMat.a -static -o BUILD/Test.exe
+#x86_64-w64-mingw32-gcc Test.c BUILD/MINGW/libLDMat.a -static -o BUILD/Test.exe

@@ -43,6 +43,10 @@
     %define arg2f XMM1
     %define arg3f XMM2
     %define arg4f XMM3
+    %define arg5f XMM4
+    %define arg6f XMM5
+    %define arg7f XMM6
+    %define arg8f XMM7
 %endmacro
 args_reset ;<--Sets arguments definitions to normal, as it's definitions can change.
 

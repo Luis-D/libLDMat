@@ -41,12 +41,17 @@
 ;March	 14, 2019: Windows routines prologues fixed.
 ;April	 02, 2019: Quaternion Normalized LERP added.
 ;April	 14, 2019: MADSS and SSMAD Operations added.
-;April   19, 2019: M4 and M2 Transpose and Quaternion SLERP functions added.
 ;June	 03, 2019: Inversion instructions added. Absolute value instruction added.
+;April	 01, 2020: Orthogonal projection redone.
 
- 
+;TODO:
+;July	 27, 2020: Complete SLERP.
+;July	 27, 2020: Interleave instructions to gain performance.
+;July	 31, 2020: Rewrite in GAS
+
+
 ;Notes:
-;   - Matrices are ROW MAJOR.
+;   - Matrices are COLUMN MAJOR.
 ;   - "LEGACY MACROS" are pieces of code from Boring-NASM-Code
 ;   - V2ANGLE does not have a MACRO version. This routine uses FPU.
 ;   - V2V2ANGLE does not have a MACRO version. This routine uses FPU.
@@ -361,6 +366,8 @@ global V4DOT; float V4DOT(void * A, void * B)
     mulps %4,%3  ;(B-A)*t
     addps %4,%1  ;C = A+((B-A)*t)
 %endmacro
+
+
 %macro _V4LERP_ 4
 ;%1 Is the Destiny Operand        
 ;%2 Is the First  Operand Vector 
@@ -384,8 +391,8 @@ global V4LERP; void V4LERP(void * Result, void * A, void * B, float factor)
     %endif
         _enter_
         movups XMM1,[arg2]
-        movups XMM2,[arg3]
         pshufd arg1f,arg1f,0
+        movups XMM2,[arg3]
         _V4Lerp_ XMM1,XMM2,arg1f,argrf
         movntps [arg1],argrf
         _leave_
@@ -763,7 +770,7 @@ movsldup   %4,%4,
 	   fld dword [arg1+4]
 	   fld dword [arg1]
 	   fpatan
-	   fchs
+	   ;fchs
 	   fstp dword [rsp]
 	   movss xmm0, [rsp] 
 	   add rsp, 8
@@ -785,7 +792,7 @@ movsldup   %4,%4,
 	   fld dword[arg2];B.x
 	   fsubp
 	   fpatan
-	   fchs
+	   ;fchs
 	   fstp dword[rsp] 
 	   movss xmm0, [rsp] 
 	   add rsp, 8
@@ -1867,8 +1874,71 @@ global M2TRANSPOSE; void M2TRANSPOSE(void * Destiny, void * Origin)
 
 
 
-
+%if 0
 ;** 4x4 MATRIX MATH **;
+global M4LERP; M4LERP(float * Result, float * MatrixA, float * MatrixB, float Factor)
+;***************************************************************
+;Given two 4x4 Matrices A and B and a scalar factor,
+;This function will return a linear interpolation between them
+;***************************************************************
+M4LERP:
+    %ifidn __OUTPUT_FORMAT__, win64 
+        %define arg1f XMM3 ;The fourth argument is a float, Factor.
+        %define argrf XMM0 ;The result will be stored here.
+    %elifidn __OUTPUT_FORMAT__, elf64
+        %define argrf XMM3 ;The result will be stored here.
+    %endif
+
+    _enter_
+    ;XMM4 - XMM7 OUTPUT MATRIX (one at a time)
+    ;XMM1	 MATRIX A COLUMNS (one at a time)
+    ;XMM2	 MATRIX B COLUMNS (one at a time)
+
+    ;XMM4
+    movups XMM1,[arg2]
+    pshufd arg1f,arg1f,0
+    MOVUPS XMM2,[arg3]
+    add arg2,4*4
+    _V4Lerp_ XMM1, XMM2,arg1f,XMM4
+    add arg3,4*4
+
+    ;XMM5
+    movups XMM1,[arg2]
+    movups XMM2,[arg3]
+    add arg2,4*4 ;UPDATING A MATRIX POINTER
+    movups [arg1],XMM4 ;OUTPUTING FIRST COLUMN
+    add arg3,4*4;UPDATING B MATRIX POINTER
+    _V4Lerp_ XMM1, XMM2,arg1f, XMM5
+    add arg1,4*4;UPDATING DESTINY POINTER
+
+    ;XMM6
+    movups XMM1,[arg2]
+    movups XMM2,[arg3]
+    add arg2,4*4 ;UPDATING A MATRIX POINTER
+    movups [arg1],XMM5 ;OUTPUTING SECOND COLUMN
+    add arg3,4*4 ;UPDATING B MATRIX POINTER
+    _V4Lerp_ XMM1, XMM2,arg1f, XMM6
+    add arg1,4*4 ;UPDATING DESTINY POINTER
+    
+    ;XMM7
+    movups XMM1,[arg2]
+    movups XMM2,[arg3]
+    add arg2,4*4; UPDATING A MATRIX POINTER
+    movups [arg1],XMM6 ;OUTPUTING THIRD COLUMN
+    add arg3,4*4 ; UPDATING B MATRIX POINTER
+    _V4Lerp_ XMM1, XMM2,arg1f, XMM7
+    add arg1,4*4 ; UPDATING DESTINY POINTER
+  
+    movups [arg1],XMM7;OUTPUTING FOURTH COLUMN
+
+    _leave_
+    ret
+
+    %ifidn __OUTPUT_FORMAT__, win64 
+        args_reset
+    %endif
+%endif
+
 
 %macro M4x4MULMACRO 2 ;When used, registers should be 0'd
 ;**LEGACY MACRO**;
@@ -1882,6 +1952,8 @@ global M2TRANSPOSE; void M2TRANSPOSE(void * Destiny, void * Origin)
     movss %2,xmm8
     movlhps %2,xmm10
 %endmacro
+
+%if 0
 global M4MULV4;M4MULV4(float * Result, float * MatrixA, float *VectorB);
 ;******************************************************
 ; Given a 4x4 Matrix MatrixA and a 4D Vector VectorB,
@@ -1933,9 +2005,10 @@ M4MULV4:
     _leave_
     ret
 args_reset
+%endif
 
 
-
+%if 0
 global M4MUL ;void M4MUL (void * Result, float * A, float *B);
 ;**********************************************
 ;Given A and B (both 4x4 Matrices),
@@ -1955,6 +2028,7 @@ M4MUL:
     %define arg2 rdx
     %define arg3 rdi
 %endif
+
 
     sub rsp, 16*8
     movups [rsp],xmm8
@@ -2008,9 +2082,10 @@ M4MUL:
 %endif
     _leave_
     ret
+%endif
 args_reset
 
-
+%if 0
 global M4MAKE; void M4MAKE(void * Destiny,float Scale) //FIXME
 ;**************************************************************
 ;This algorithm fills a matrix buffer with a scaling constant
@@ -2039,6 +2114,7 @@ global M4MAKE; void M4MAKE(void * Destiny,float Scale) //FIXME
         ret
 %ifidn __OUTPUT_FORMAT__, win64 
     args_reset
+%endif
 %endif
 
 
@@ -2090,6 +2166,8 @@ global M4MAKE; void M4MAKE(void * Destiny,float Scale) //FIXME
     subps %1,%4
 %endmacro
 
+
+%if 0 
 global M4INV; void M4INV(void * Result, void * Matrix);
 ;****************************************************************************************
 ; This function returns the inverse of a given 4x4 Matrix (A).
@@ -2322,13 +2400,15 @@ M4INV:
     _leave_
     ret
 
+%endif
+
 %unmacro _M4INVERSE_M2MULADJ 5
 %unmacro _M4INVERSE_ADJMULM2 5
 %unmacro _M4INVERSE_Submatrices_L_ 3
 %unmacro _M4INVERSE_Submatrices_H_ 3
 
 
-
+%if 0
 global M4MULV3
 ; M4MULV3(void * Result, void * Matrix, void * Vector);
 ;*******************************************************************************************
@@ -2410,11 +2490,11 @@ M4MULV3:
 %endif
     _leave_
     ret
+%endif
+
 args_reset
 
-
-
-
+%if 0 
 global AM4MULV3; void AM4MULV3(void * Vec3_Destiny, void * Matrix, void * Vector);
 ;****************************************************************************************
 ; Given a 4x4 Matrix and a 3D Vector,
@@ -2498,6 +2578,8 @@ AM4MULV3:
 %endif
     _leave_
     ret
+%endif
+
 args_reset
 
 
@@ -2638,12 +2720,123 @@ global M4TRANSPOSE; void M4TRANSPOSE(void * Destiny, void * Origin)
     _leave_
     ret
 
+
 global M4ORTHO;
+;    void M4ORTHO
+;    (float *matrix, float L, float R, float T,float B, float znear, float zfar);
+;*********************************************************
+M4ORTHO:
+    %define arg5f XMM4
+%ifidn __OUTPUT_FORMAT__, win64 
+    %define arg1f XMM1 ;L
+    %define arg2f XMM2 ;R
+    %define arg3f XMM3 ;T
+    %define arg4f XMM4 ;B (in stack)
+    %define arg5f XMM5 ;znear (in stack)
+    %define arg6f XMM0 ;zfar (in stack)
+
+    ;B is in the stack, so it have to be moved to XMM4
+    movss arg4f,[rsp+32+8]
+    ;znear is in the stack, so it have to be moved to XMM5
+    movss arg5f,[rsp+32+8+4]
+    ;zfar is in the stack, so it have to be moved to XMM0
+    movss arg6f,[rsp+32+8+4+4]
+%endif
+
+    _enter_
+
+%ifidn __OUTPUT_FORMAT__, win64 
+    sub rsp,16*2
+    movups [rsp],xmm6
+    movups [rsp+16],xmm7
+%endif
+    
+    movss xmm6,arg1f
+    addss arg1f,arg2f
+    subss arg2f,xmm6
+
+    movss xmm6,arg3f
+    addss arg3f,arg4f
+    subss arg4f,xmm6
+    
+    movss xmm6,arg5f
+    addss arg5f,arg6f
+    subss arg6f,xmm6
+
+    pcmpeqw xmm7,xmm7
+    pslld xmm7,25
+    psrld xmm7,2
+
+    pcmpeqw xmm6,xmm6
+    pslld xmm6,31
+
+    pxor xmm7,xmm6
+
+    ;arg1f = r+l
+    ;arg2f = r-l
+    ;arg3f = t+b
+    ;arg4f = t-b
+    ;arg5f = f+n
+    ;arg6f = f-n
+    ;xmm6 = [SC][SC][SC][SC]
+    ;xmm7 = [-1][-1][-1][-1]
+
+    divss arg5f,arg6f
+    divss arg3f,arg4f
+    divss arg1f,arg2f
+
+    movss xmm7,arg5f
+    pslldq xmm7,4
+    movss xmm7,arg3f
+    pslldq xmm7,4
+    movss xmm7,arg1f
+
+    pxor xmm7,xmm6
+
+    ;xmm7 = [1][-(f+n/f-n)][-(t+b/t-b)][-(r+l/r-l)]
+
+    pcmpeqw arg1f,arg1f
+    pslld arg1f,31
+    psrld arg1f,1
+    movss arg3f,arg1f
+    movss arg5f,arg1f
+
+    divss arg1f,arg2f
+    divss arg3f,arg4f
+    divss arg5f,arg6f
+    pxor arg5f,xmm6
+
+    pslldq arg1f,12
+    psrldq arg1f,12
+    pslldq arg3f,12
+    psrldq arg3f,8
+    pslldq arg5f,12
+    psrldq arg5f,4
+
+    movups [arg1],arg1f
+    movups [arg1+16],arg3f
+    movups [arg1+16+16],arg5f
+    movups [arg1+16+16+16],xmm7
+
+%ifidn __OUTPUT_FORMAT__, win64 
+
+    movups xmm6,[rsp]
+    movups xmm7,[rsp+16]
+    add rsp, 16*2
+
+    args_reset
+%endif
+    _leave_
+    ret 
+
+args_reset
+
+global OLD_M4ORTHO;
 ;    void M4ORTHO
 ;    (float *matrix, float Width, float Height, float znear, float zfar);
 ;*********************************************************
 
-M4ORTHO: 
+OLD_M4ORTHO: 
 
 
     %define arg5f XMM4
@@ -2745,6 +2938,7 @@ M4ORTHO:
 
 %undef arg5f
     
+args_reset
 
 
 global M4LOOKAT

@@ -50,6 +50,8 @@ extern "C"
     typedef float ANGLE;
     typedef struct M2{struct V2 column[2];}M2;
     typedef struct M4{struct V4 column[4];}M4;
+
+	//EULER AXIS, NOT EULER ANGLES
     typedef struct EULER{struct V3 axis; float angle;}EULER;
     /******************/
 
@@ -101,6 +103,7 @@ extern "C"
     #define M2SUB   V4SUB
     #define M2MULSS V4MULSS
     #define M2DIVSS V4DIVSS
+    #define M2LERP V4LERP
 
 
     void M4MAKE(void * Destiny,float Scale);
@@ -108,12 +111,13 @@ extern "C"
     void M4MUL BPara;
     void M4MULV4(void * V4_Destiny, void * Matrix, void * Vector);
     void M4INV PROCPara;
+    void M4LERP(void * Destiny, void * A, void * B, float Factor);
 
     void M4MULV3(void * V3_Destiny, void * Matrix, void * Vector);
     void AM4MULV3(void * V3_Destiny, void * Matrix, void * Vector); 
 
     void M4PERSPECTIVE(void *matrix, float fovyInDegrees, float aspectRatio,float znear, float zfar);
-    void M4ORTHO(void *matrix, float Width, float Height, float znear, float zfar);
+    void M4ORTHO(void *matrix, float L, float R, float T, float B,float znear, float zfar);
     void M4LOOKAT(void * matrix, void * Vec3From_EYE, void * Vec3To_CENTER, void * Vec3Up);
 #ifdef __cplusplus
 }
