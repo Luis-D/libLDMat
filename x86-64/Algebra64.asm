@@ -2720,7 +2720,7 @@ global M4TRANSPOSE; void M4TRANSPOSE(void * Destiny, void * Origin)
     _leave_
     ret
 
-
+%if 0
 global M4ORTHO;
 ;    void M4ORTHO
 ;    (float *matrix, float L, float R, float T,float B, float znear, float zfar);
@@ -2824,10 +2824,10 @@ M4ORTHO:
     movups xmm7,[rsp+16]
     add rsp, 16*2
 
-    args_reset
 %endif
     _leave_
     ret 
+%endif
 
 args_reset
 
